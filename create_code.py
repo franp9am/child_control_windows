@@ -8,6 +8,8 @@ import hashlib
 import hmac
 import os
 
+
+# make sure the secret is set and is equal to the on in childs computed monitor.py script
 if os.environ["CHILD_SECRET"] is None:
     raise ValueError("CHILD_SECRET is not set")
 
