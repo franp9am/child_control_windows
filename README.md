@@ -35,3 +35,8 @@ The child writes this code to the file specified int monitor.py text document.
 
 To generate the codes, the parent can run the create_code.py script on his machine.
 Both machines share a secret password which should not be shared with the child.
+
+
+## Python dependencies
+
+None!
