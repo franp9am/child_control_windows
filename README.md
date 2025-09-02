@@ -40,3 +40,11 @@ Both machines share a secret password which should not be shared with the child.
 ## Python dependencies
 
 None!
+
+
+## TODO
+
+There is a lot of functionality one could add -- feel free to do a PR.
+* current computer shutdown is maybe too strict
+* monitoring multiple accounts 
+* extra time codes from a mobile phone app?
