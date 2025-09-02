@@ -20,7 +20,7 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 
 ## Safety
 
-Make sure to password-protect biols to prevent boot from other device.
+Make sure to password-protect bios to prevent boot from other device.
 Encrypt the hard-drive by bitlocker to prevent the child physically taking out the hard drive and modifying some system files from elsewhere.
 
 ## Extra time request
