@@ -2,7 +2,7 @@
 
 A simple setup to limit childs screentime on a (typically windows) computer.
 
-It sets up a daily screentime limit and adds for allowing more time upon request.
+It sets up a daily screentime limit and supports allowing more time upon request.
 
 Very basic. Compared to microsoft family safety, it has these advantages:
 
