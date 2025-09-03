@@ -31,7 +31,7 @@ If you want to grant extra time to the child, you generate a code that looks lik
 * signature is 4 or more characters
 A typical code can look like 2025-09-02:3600:a184 which would grant an extra hour (3600 seconds) valid during the date.
 
-The child writes this code to the file specified int monitor.py text document.
+The child writes this code to the file specified in monitor.py text document.
 
 To generate the codes, the parent can run the create_code.py script on his machine.
 Both machines share a secret password which should not be shared with the child.
