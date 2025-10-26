@@ -13,10 +13,12 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 
 ## Setup
 
-1. Child needs to have a non-admin account.
-2. On the admin account, you put the monitor.py script to some folder that is not visible from childs account.
-3. The monitor.py script is run from python upon machine startup
-4. Current version of the script assumes Windows Pro (on Home, the "msg" doesn't work)
+* Child needs to have a non-admin account.
+* On the admin account, you put the monitor.py script to some folder that is not visible from childs account.
+* The monitor.py script is run from python upon machine startup
+* To install python, you can do for instance `winget install --id Python.Python.3.11 -e --source winget` in PowerShell
+* To find out where python is, you may use `Get-Command python` in PowerShell (or try `which python`)
+* Open task scheduler (taskschd.msc) and define a trigger at system startup with the command `C:\path\to\python \path\to\monitor.py`
 
 ## Safety
 
@@ -40,11 +42,3 @@ Both machines share a secret password which should not be shared with the child.
 ## Python dependencies
 
 None!
-
-
-## TODO
-
-There is a lot of functionality one could add -- feel free to do a PR.
-* current computer shutdown is maybe too strict
-* monitoring multiple accounts 
-* extra time codes from a mobile phone app?

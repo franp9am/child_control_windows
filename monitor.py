@@ -2,8 +2,8 @@
 Use this on the child's machine to monitor the time
 and shutdown the machine when the time is up.
 
-This script should be run on startup and not be accessible
-from the childs account.
+This script should be run on startup under system account 
+and not be accessible from the childs account.
 """
 
 import datetime
@@ -75,18 +75,35 @@ def save_data(data, datafile):
 
 
 def query_users():
+    """May only work on windows Pro"""
     r = subprocess.run(
-        ["query", "user"], capture_output=True, text=True, errors="ignore"
+        ["query", "user"],
+        capture_output=True,
+        text=True,
+        errors="ignore"
     )
+    return r.stdout
 
-    try:
-        return r.stdout
-    except Exception:
-        return ""
+
+def user_has_tasks(user):
+    """Should also work on windows Home"""
+    cmd = f'tasklist /V | findstr /I "{user}"'
+    r = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+        errors="ignore"
+    )
+    return r.returncode == 0 and bool(r.stdout.strip())
 
 
 def user_logged_in(user=TARGET_USER):
-    return user.lower() in query_users().lower()
+    try:
+        qu = query_users().lower()
+        return user.lower() in qu
+    except Exception:  # query user doesnt work or doesnt return a string
+        return user_has_tasks(user)
 
 
 def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
@@ -101,7 +118,12 @@ def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
 
 
 def send_message(message):
-    subprocess.run(["msg", "*", message])
+    """May only work on windows Pro"""
+    try:
+        subprocess.run(["msg", "*", message])
+    except Exception:
+        # not critical
+        pass
 
 
 def verify(msg: bytes, sig_hex: str) -> bool:
@@ -109,7 +131,7 @@ def verify(msg: bytes, sig_hex: str) -> bool:
     return expected == sig_hex
 
 
-def handle_redeem_file() -> Optional[int]:
+def handle_redeem_file():
     """Checks the redeem code from file and adds the time to the data file"""
     if not len(SECRET):  # if secret is not loaded, program should not break
         return {
