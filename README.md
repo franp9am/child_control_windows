@@ -21,8 +21,8 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 * Open task scheduler (taskschd.msc) and define a trigger at system startup with the command `C:\path\to\python \path\to\monitor.py`. If you have Windows Home, you may need to do something like 
 ```
 schtasks /create /tn "ScreenTimeMonitor" ^
-    /tr "\"C:\Path\To\python.exe\" \"C:\Path\To\monitor.py\"" ^
-    /sc onstart /ru SYSTEM /rl HIGHEST /f
+/tr ""C:\Path\To\python.exe" "C:\Path\To\monitor.py"" ^
+/sc onstart /ru SYSTEM /rl HIGHEST /f
 ``` 
 but I didn't test it.
 
