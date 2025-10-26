@@ -46,7 +46,7 @@ def get_datafile():
     return DATA_DIR / (datetime.date.today().isoformat() + ".json")
 
 
-def check_time():
+def check_not_night_time():
     hour = datetime.datetime.now().hour
     return EARLIEST_HOUR_INCLUDED <= hour <= LATEST_HOUR_INCLUDED
 
@@ -231,7 +231,7 @@ def main():
         is_logged_in = user_logged_in()
 
         if is_logged_in:
-            if not check_time():
+            if not check_not_night_time():
                 send_message(message="Night time")
                 data["event_log"].append(f"Night time {now_str}")
                 save_data(data, datafile)
