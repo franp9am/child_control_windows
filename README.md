@@ -30,6 +30,7 @@ but I didn't test it.
   * DAILY_LIMIT_SECONDS -- how many seconds per day is the maximal screentime
   * SHUTDOWN_DELAY_SECONDS -- after system shut down, how many seconds is the grace period (to save things etc)
   * EARLIEST_HOUR_INCLUDED and LATEST_HOUR_INCLUDED -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
+  * REDEEM_FILE_PATH -- path to a local file the children can access, to write a code in case you grant him extra time
 
 
 ## Safety
