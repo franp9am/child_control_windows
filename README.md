@@ -25,7 +25,7 @@ schtasks /create /tn "ScreenTimeMonitor" ^
 /sc onstart /ru SYSTEM /rl HIGHEST /f
 ``` 
 but I didn't test it.
-* In the monitor.py, if edit
+* In the monitor.py, edit these variables
   * TARGET_USER -- child's windows account
   * DAILY_LIMIT_SECONDS -- how many seconds per day is the maximal screentime
   * SHUTDOWN_DELAY_SECONDS -- after system shut down, how many seconds is the grace period (to save things etc)
