@@ -6,14 +6,22 @@ import argparse
 import hashlib
 import hmac
 import os
+from pathlib import Path
 
+DATA_DIR = Path(__file__).parent / "data"
 
 # make sure the secret is set and is equal to the on in childs computed monitor.py script
-if os.environ["CHILD_SECRET"] is None:
-    raise ValueError("CHILD_SECRET is not set")
+sec = os.environ.get("CHILD_SECRET")
+if sec is None:
+    try:
+        with open(DATA_DIR / "sec.txt", "r") as f:
+            sec = f.read().strip()
+    except FileNotFoundError:
+        pass
 
+if sec is None:
+    raise ValueError("CHILD_SECRET is not set and data/sec.txt not found")
 
-sec = os.environ["CHILD_SECRET"]
 secret = bytes.fromhex(sec)
 
 
