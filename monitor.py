@@ -46,6 +46,42 @@ def get_datafile():
     return DATA_DIR / (datetime.date.today().isoformat() + ".json")
 
 
+def find_previous_datafile(today: datetime.date) -> Optional[Path]:
+    """Find the most recent data file for a date before today, if any."""
+    prev_dates = []
+    for p in DATA_DIR.glob("*.json"):
+        try:
+            d = datetime.date.fromisoformat(p.stem)
+        except ValueError:
+            continue
+        if d < today:
+            prev_dates.append(d)
+    if not prev_dates:
+        return None
+    return DATA_DIR / (max(prev_dates).isoformat() + ".json")
+
+
+def compute_carryover_sec(today: datetime.date) -> int:
+    """
+    Time to carry into today: leftover unused time from the most recent
+    previous day with data, plus one full DAILY_LIMIT_SECONDS for every
+    calendar day in between that has no data file at all (not connected).
+    """
+    prev_file = find_previous_datafile(today)
+    if prev_file is None:
+        return 0
+    prev_date = datetime.date.fromisoformat(prev_file.stem)
+    prev_data = load_data(prev_file)
+    leftover = max(
+        0,
+        DAILY_LIMIT_SECONDS
+        + prev_data.get("extra_time_sec", 0)
+        - prev_data.get("time_spent_sec", 0),
+    )
+    missing_days = (today - prev_date).days - 1  # fully skipped days, no file
+    return leftover + missing_days * DAILY_LIMIT_SECONDS
+
+
 def check_not_night_time():
     hour = datetime.datetime.now().hour
     return EARLIEST_HOUR_INCLUDED <= hour <= LATEST_HOUR_INCLUDED
@@ -226,7 +262,15 @@ def main():
         now = datetime.datetime.now()
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         datafile = get_datafile()
+        is_new_day = not datafile.is_file()
         data = load_data(datafile)
+
+        if is_new_day:
+            carryover = compute_carryover_sec(now.date())
+            if carryover > 0:
+                data["extra_time_sec"] = carryover
+                data["event_log"].append(f"carryover {carryover} sec from previous day {now_str}")
+                save_data(data, datafile)
 
         is_logged_in = user_logged_in()
 
