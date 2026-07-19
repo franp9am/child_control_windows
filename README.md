@@ -40,11 +40,10 @@ Encrypt the hard-drive by bitlocker to prevent the child physically taking out t
 
 ## Extra time request
 
-If you want to grant extra time to the child, you generate a code that looks like this `<date>:<extra_time_seconds>:<signature>` where
-* date is in format YYYY-MM-DD
+If you want to grant extra time to the child, you generate a code that looks like this `<extra_time_seconds>:<signature>` where
 * extra time is an integer
 * signature is 4 or more characters
-A typical code can look like 2025-09-02:3600:a184 which would grant an extra hour (3600 seconds) valid during the date.
+A typical code can look like 3600:a184 which would grant an extra hour (3600 seconds). Codes are not tied to a date; each code can only be redeemed once, tracked in `data/used_redeem_codes.json`.
 
 The child writes this code to the file specified in monitor.py text document.
 

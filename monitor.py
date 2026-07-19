@@ -31,6 +31,8 @@ LATEST_HOUR_INCLUDED = 20
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
+
 TAKE_CHARS = 4  # 65 536 different signatures for redeem codes
 
 
@@ -98,7 +100,6 @@ def load_data(datafile):
             "last_tick": None,
             "extra_time_sec": 0,
             "event_log": [],
-            "used_redeem_codes": [],
         }
 
 
@@ -108,6 +109,23 @@ def save_data(data, datafile):
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     os.replace(tmp_file, datafile)  # make the write atomic
+
+
+def load_used_codes():
+    """Redeem codes are no longer tied to a date, so used codes must be
+    tracked across days rather than in the per-day data file."""
+    try:
+        with open(USED_CODES_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def save_used_codes(used_codes):
+    tmp_file = USED_CODES_FILE.with_suffix(".tmp")
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(sorted(used_codes), f, indent=2)
+    os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
 
 
 def query_users():
@@ -214,17 +232,16 @@ def handle_redeem_file():
         }
 
     parts = redeem_content.split(":")
-    # we expect three parts in the format: date:extra_time:signature
-    if not len(parts) == 3:
+    # we expect two parts in the format: extra_time:signature
+    if not len(parts) == 2:
         return {
             "status": "invalid format",
             "redeem_code": redeem_content,
             "extra_time_sec": 0,
         }
 
-    req_date = parts[0]
     try:
-        req_extra_time = int(parts[1])  # trying to convert to integer
+        req_extra_time = int(parts[0])  # trying to convert to integer
     except Exception:
         return {
             "status": "invalid format",
@@ -232,15 +249,8 @@ def handle_redeem_file():
             "extra_time_sec": 0,
         }
 
-    req_sig = parts[2]
-    extracted_payload = f"{req_date}:{req_extra_time}".encode()
-
-    if not req_date == datetime.date.today().isoformat():
-        return {
-            "status": "invalid date",
-            "redeem_code": redeem_content,
-            "extra_time_sec": 0,
-        }
+    req_sig = parts[1]
+    extracted_payload = f"{req_extra_time}".encode()
 
     if not verify(extracted_payload, req_sig):
         return {
@@ -283,18 +293,17 @@ def main():
                 return
 
             redeem = handle_redeem_file()
-            if (
-                redeem
-                and redeem["status"] == "valid"
-                and not (redeem["redeem_code"] in data["used_redeem_codes"])
-            ):
-                # redeem code is valid and not used yet
-                data["used_redeem_codes"].append(redeem["redeem_code"])
-                extra_time = redeem["extra_time_sec"]
-                data["event_log"].append(f"redeem code {extra_time} {now_str}")
-                data["extra_time_sec"] += extra_time
-                send_message(message=f"extra time {extra_time}")
-                save_data(data, datafile)
+            if redeem and redeem["status"] == "valid":
+                used_codes = load_used_codes()
+                if redeem["redeem_code"] not in used_codes:
+                    # redeem code is valid and not used yet
+                    used_codes.add(redeem["redeem_code"])
+                    save_used_codes(used_codes)
+                    extra_time = redeem["extra_time_sec"]
+                    data["event_log"].append(f"redeem code {extra_time} {now_str}")
+                    data["extra_time_sec"] += extra_time
+                    send_message(message=f"extra time {extra_time}")
+                    save_data(data, datafile)
 
             if data["time_spent_sec"] >= DAILY_LIMIT_SECONDS + data["extra_time_sec"]:
                 send_message(message="time up")
