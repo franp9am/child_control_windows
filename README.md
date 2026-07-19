@@ -33,6 +33,20 @@ but I didn't test it.
   * REDEEM_FILE_PATH -- path to a local file the children can access, to write a code in case you grant him extra time
 
 
+## Remaining time overlay
+
+`remaining_time_widget.py` shows a small always-on-top "time left" box in the top-right corner of the child's screen. monitor.py publishes the seconds remaining today to `REMAINING_TIME_FILE_PATH` (defaults to `C:\Users\Public\eli_remaining_time.txt`, alongside the redeem file) on every tick; the widget only reads that one file, so it never needs access to `data/` or `sec.txt`.
+
+Setup, run under the **child's own account** (not SYSTEM):
+* Nothing extra to grant — `C:\Users\Public\` is readable by all local accounts by default, same as the redeem file already relies on.
+* If you change `REMAINING_TIME_FILE_PATH` in monitor.py, update the same constant at the top of remaining_time_widget.py to match.
+* Put a shortcut to it in the child's Startup folder (`shell:startup`), targeting `pythonw.exe` (not `python.exe`, so no console window appears), e.g.
+```
+C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py
+```
+* The child can close the widget window with Alt+F4 if they want; this is just a visual reminder, the actual enforcement is done by monitor.py.
+
+
 ## Safety
 
 Make sure to password-protect bios to prevent boot from other device.
