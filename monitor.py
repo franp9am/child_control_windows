@@ -20,6 +20,9 @@ TARGET_USER = "elias"  # change this to the target user
 REDEEM_FILE_PATH = (
     r"C:\Users\Public\eli_redeem_time.txt"  # change this to the redeem file path
 )
+REMAINING_TIME_FILE_PATH = (
+    r"C:\Users\Public\eli_remaining_time.txt"  # child-readable, holds seconds remaining today
+)
 
 DAILY_LIMIT_SECONDS = 120 * 60
 CHECK_INTERVAL_SECONDS = 60
@@ -126,6 +129,18 @@ def save_used_codes(used_codes):
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(sorted(used_codes), f, indent=2)
     os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
+
+
+def write_remaining_time_file(remaining_sec):
+    """Publish remaining seconds to a child-readable file for a UI to display."""
+    target = Path(REMAINING_TIME_FILE_PATH)
+    tmp_file = target.with_suffix(".tmp")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            f.write(str(max(0, remaining_sec)))
+        os.replace(tmp_file, target)
+    except Exception:
+        pass  # not critical
 
 
 def query_users():
@@ -289,6 +304,7 @@ def main():
                 send_message(message="Night time")
                 data["event_log"].append(f"Night time {now_str}")
                 save_data(data, datafile)
+                write_remaining_time_file(0)
                 shutdown_machine(shutdown_delay_seconds=10)
                 return
 
@@ -309,6 +325,7 @@ def main():
                 send_message(message="time up")
                 data["event_log"].append(f"time up {now_str}")
                 save_data(data, datafile)
+                write_remaining_time_file(0)
                 shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)
                 return
 
@@ -316,6 +333,8 @@ def main():
             data["ticks"].append(now_str)
             data["last_tick"] = now_str
             save_data(data, datafile)
+            remaining = DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
+            write_remaining_time_file(remaining)
         else:
             # not logged in, nothing to report
             pass
