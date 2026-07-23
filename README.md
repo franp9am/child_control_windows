@@ -25,12 +25,15 @@ schtasks /create /tn "ScreenTimeMonitor" ^
 /sc onstart /ru SYSTEM /rl HIGHEST /f
 ``` 
 but I didn't test it.
-* In the monitor.py, edit these variables
-  * TARGET_USER -- child's windows account
-  * DAILY_LIMIT_SECONDS -- how many seconds per day is the maximal screentime
-  * SHUTDOWN_DELAY_SECONDS -- after system shut down, how many seconds is the grace period (to save things etc)
-  * EARLIEST_HOUR_INCLUDED and LATEST_HOUR_INCLUDED -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
-  * REDEEM_FILE_PATH -- path to a local file the children can access, to write a code in case you grant him extra time
+* Edit `config.py`, which sits next to the scripts and holds every setting. Nothing has to be changed in monitor.py itself. The variables you will care about:
+  * `TARGET_USER` -- child's windows account
+  * `DAILY_LIMIT_SECONDS` -- how many seconds per day is the maximal screentime
+  * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
+  * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
+  * `REDEEM_FILE_PATH` -- path to a local file the children can access, to write a code in case you grant him extra time
+  * `DATA_DIR` -- where the per-day json files, the used-code list and `sec.txt` live
+
+  The rest (poll intervals, the overlay's colours and font, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
 
 
 ## Remaining time overlay
@@ -39,7 +42,8 @@ but I didn't test it.
 
 Setup, run under the **child's own account** (not SYSTEM):
 * Nothing extra to grant — `C:\Users\Public\` is readable by all local accounts by default, same as the redeem file already relies on.
-* If you change `REMAINING_TIME_FILE_PATH` in monitor.py, update the same constant at the top of remaining_time_widget.py to match.
+* Copy `config.py` next to `remaining_time_widget.py`, it reads its settings from there too. The copy holds only paths and colours, no secret, but its `REMAINING_TIME_FILE_PATH` must match the one monitor.py uses.
+* Colours, font and poll interval of the overlay are the last block of config.py.
 * Put a shortcut to it in the child's Startup folder (`shell:startup`), targeting `pythonw.exe` (not `python.exe`, so no console window appears), e.g.
 ```
 C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py

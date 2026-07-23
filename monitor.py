@@ -2,8 +2,10 @@
 Use this on the child's machine to monitor the time
 and shutdown the machine when the time is up.
 
-This script should be run on startup under system account 
+This script should be run on startup under system account
 and not be accessible from the childs account.
+
+All settings live in config.py next to this file.
 """
 
 import datetime
@@ -16,31 +18,28 @@ import time
 from pathlib import Path
 from typing import Optional
 
-TARGET_USER = "elias"  # change this to the target user
-REDEEM_FILE_PATH = (
-    r"C:\Users\Public\eli_redeem_time.txt"  # change this to the redeem file path
+from config import (
+    CHECK_INTERVAL_SECONDS,
+    DAILY_LIMIT_SECONDS,
+    DATA_DIR,
+    EARLIEST_HOUR_INCLUDED,
+    LATEST_HOUR_INCLUDED,
+    MAX_REDEEM_FILE_BYTES,
+    NIGHT_SHUTDOWN_DELAY_SECONDS,
+    REDEEM_FILE_PATH,
+    REMAINING_TIME_FILE_PATH,
+    SECRET_FILE,
+    SHUTDOWN_DELAY_SECONDS,
+    SIGNATURE_CHARS,
+    STARTUP_DELAY_SECONDS,
+    TARGET_USER,
+    USED_CODES_FILE,
 )
-REMAINING_TIME_FILE_PATH = (
-    r"C:\Users\Public\eli_remaining_time.txt"  # child-readable, holds seconds remaining today
-)
 
-DAILY_LIMIT_SECONDS = 120 * 60
-CHECK_INTERVAL_SECONDS = 60
-SHUTDOWN_DELAY_SECONDS = 300
-
-EARLIEST_HOUR_INCLUDED = 6
-LATEST_HOUR_INCLUDED = 20
-
-DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
-
-TAKE_CHARS = 4  # 65 536 different signatures for redeem codes
-
-
 try:
-    with open(DATA_DIR / "sec.txt", "r") as f:  # path with secret password
+    with open(SECRET_FILE, "r") as f:  # path with secret password
         SECRET = bytes.fromhex(f.read().strip())
 except Exception as e:
     print(f"Error loading secret: {e}")
@@ -67,11 +66,8 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
 
 
 def compute_carryover_sec(today: datetime.date) -> int:
-    """
-    Time to carry into today: leftover unused time from the most recent
-    previous day with data, plus one full DAILY_LIMIT_SECONDS for every
-    calendar day in between that has no data file at all (not connected).
-    """
+    """Leftover time from the last day with data, plus a full daily limit for
+    every calendar day in between that has no data file (machine was off)."""
     prev_file = find_previous_datafile(today)
     if prev_file is None:
         return 0
@@ -107,16 +103,14 @@ def load_data(datafile):
 
 
 def save_data(data, datafile):
-    # make the write atomic to prevent random breakage
     tmp_file = datafile.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-    os.replace(tmp_file, datafile)  # make the write atomic
+    os.replace(tmp_file, datafile)  # atomic, prevents random breakage
 
 
 def load_used_codes():
-    """Redeem codes are no longer tied to a date, so used codes must be
-    tracked across days rather than in the per-day data file."""
+    """Codes are not tied to a date, so used ones are tracked across days."""
     try:
         with open(USED_CODES_FILE, "r", encoding="utf-8") as f:
             return set(json.load(f))
@@ -133,7 +127,7 @@ def save_used_codes(used_codes):
 
 def write_remaining_time_file(remaining_sec):
     """Publish remaining seconds to a child-readable file for a UI to display."""
-    target = Path(REMAINING_TIME_FILE_PATH)
+    target = REMAINING_TIME_FILE_PATH
     tmp_file = target.with_suffix(".tmp")
     try:
         with open(tmp_file, "w", encoding="utf-8") as f:
@@ -196,7 +190,7 @@ def send_message(message):
 
 
 def verify(msg: bytes, sig_hex: str) -> bool:
-    expected = hmac.new(SECRET, msg, hashlib.sha256).hexdigest()[:TAKE_CHARS]
+    expected = hmac.new(SECRET, msg, hashlib.sha256).hexdigest()[:SIGNATURE_CHARS]
     return expected == sig_hex
 
 
@@ -209,14 +203,14 @@ def handle_redeem_file():
             "extra_time_sec": 0,
         }
 
-    if not Path(REDEEM_FILE_PATH).is_file():
+    if not REDEEM_FILE_PATH.is_file():
         return {
             "status": "no_file",
             "redeem_code": None,
             "extra_time_sec": 0,
         }
     # prevent an attack with loading large files
-    if os.path.getsize(REDEEM_FILE_PATH) > 128:
+    if os.path.getsize(REDEEM_FILE_PATH) > MAX_REDEEM_FILE_BYTES:
         return {
             "status": "file too large",
             "redeem_code": None,
@@ -247,16 +241,17 @@ def handle_redeem_file():
         }
 
     parts = redeem_content.split(":")
-    # we expect two parts in the format: extra_time:signature
-    if not len(parts) == 2:
+    # we expect three parts in the format: date:extra_time:signature
+    if not len(parts) == 3:
         return {
             "status": "invalid format",
             "redeem_code": redeem_content,
             "extra_time_sec": 0,
         }
 
+    req_date = parts[0]
     try:
-        req_extra_time = int(parts[0])  # trying to convert to integer
+        req_extra_time = int(parts[1])  # trying to convert to integer
     except Exception:
         return {
             "status": "invalid format",
@@ -264,8 +259,10 @@ def handle_redeem_file():
             "extra_time_sec": 0,
         }
 
-    req_sig = parts[1]
-    extracted_payload = f"{req_extra_time}".encode()
+    req_sig = parts[2]
+    # The date is a signed nonce, deliberately not checked against the real
+    # calendar: it only keeps otherwise-identical codes distinct.
+    extracted_payload = f"{req_date}:{req_extra_time}".encode()
 
     if not verify(extracted_payload, req_sig):
         return {
@@ -282,7 +279,7 @@ def handle_redeem_file():
 
 
 def main():
-    time.sleep(60)  # wait for the redeem file to be created
+    time.sleep(STARTUP_DELAY_SECONDS)  # wait for the redeem file to be created
     while True:
         now = datetime.datetime.now()
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -305,7 +302,7 @@ def main():
                 data["event_log"].append(f"Night time {now_str}")
                 save_data(data, datafile)
                 write_remaining_time_file(0)
-                shutdown_machine(shutdown_delay_seconds=10)
+                shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
                 return
 
             redeem = handle_redeem_file()
@@ -321,7 +318,8 @@ def main():
                     send_message(message=f"extra time {extra_time}")
                     save_data(data, datafile)
 
-            if data["time_spent_sec"] >= DAILY_LIMIT_SECONDS + data["extra_time_sec"]:
+            limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
+            if data["time_spent_sec"] >= limit:
                 send_message(message="time up")
                 data["event_log"].append(f"time up {now_str}")
                 save_data(data, datafile)
@@ -333,7 +331,7 @@ def main():
             data["ticks"].append(now_str)
             data["last_tick"] = now_str
             save_data(data, datafile)
-            remaining = DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
+            remaining = limit - data["time_spent_sec"]
             write_remaining_time_file(remaining)
         else:
             # not logged in, nothing to report

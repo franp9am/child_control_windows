@@ -4,40 +4,51 @@ Small always-on-top overlay showing remaining screen time.
 Run this in the CHILD's own login session (e.g. via a shortcut in their
 Startup folder), not under the system account that runs monitor.py.
 
-It only reads the remaining-time file monitor.py publishes to
-C:\\Users\\Public\\ (REMAINING_TIME_FILE_PATH in monitor.py) and never
-writes to it, so the child's account only needs read access to that one
-file rather than to monitor.py's (hidden) folder or its data files.
+It only reads REMAINING_TIME_FILE_PATH and never writes to it, so the
+child's account needs read access to that one file rather than to
+monitor.py's hidden folder. Keep config.py next to it.
 """
 
+import math
 import tkinter as tk
 
-# Must match REMAINING_TIME_FILE_PATH in monitor.py.
-REMAINING_TIME_FILE_PATH = r"C:\Users\Public\eli_remaining_time.txt"
-
-POLL_INTERVAL_MS = 5000
-MARGIN_PX = 20
-
-GREEN = "#2ecc71"
-ORANGE = "#f39c12"
-RED = "#e74c3c"
+from config import (
+    COLOR_CRITICAL,
+    COLOR_NORMAL,
+    COLOR_WARNING,
+    CRITICAL_SECONDS,
+    FONT_FAMILY,
+    FONT_SIZE,
+    MARGIN_PX,
+    OPACITY,
+    POLL_INTERVAL_MS,
+    REMAINING_TIME_FILE_PATH,
+    WARNING_SECONDS,
+)
 
 
 def format_remaining(seconds):
+    """Whole hours and minutes, rounded up so anything under a minute still
+    reads as "1 minute" rather than "0 minutes"."""
     seconds = max(0, seconds)
-    hours, rem = divmod(seconds, 3600)
-    minutes, secs = divmod(rem, 60)
+    total_minutes = math.ceil(seconds / 60)
+    hours, minutes = divmod(total_minutes, 60)
+
+    parts = []
     if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
+        parts.append(f"{hours} hour" + ("s" if hours != 1 else ""))
+    # Skip minutes only for an exact number of hours (e.g. "2 hours").
+    if minutes or not hours:
+        parts.append(f"{minutes} minute" + ("s" if minutes != 1 else ""))
+    return " ".join(parts)
 
 
 def color_for(seconds):
-    if seconds <= 5 * 60:
-        return RED
-    if seconds <= 15 * 60:
-        return ORANGE
-    return GREEN
+    if seconds <= CRITICAL_SECONDS:
+        return COLOR_CRITICAL
+    if seconds <= WARNING_SECONDS:
+        return COLOR_WARNING
+    return COLOR_NORMAL
 
 
 class RemainingTimeWidget:
@@ -45,22 +56,21 @@ class RemainingTimeWidget:
         self.root = tk.Tk()
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", 0.85)
+        self.root.attributes("-alpha", OPACITY)
         self.root.configure(bg="black")
 
         self.label = tk.Label(
             self.root,
             text="",
-            font=("Segoe UI", 14, "bold"),
-            fg=GREEN,
+            font=(FONT_FAMILY, FONT_SIZE, "bold"),
+            fg=COLOR_NORMAL,
             bg="black",
             padx=12,
             pady=6,
         )
         self.label.pack()
 
-        # overrideredirect windows get no OS close button, so wire Alt+F4
-        # explicitly to let the child close it.
+        # overrideredirect windows get no OS close button
         self.root.bind_all("<Alt-F4>", lambda e: self.root.destroy())
 
         self.update_label()
@@ -82,13 +92,13 @@ class RemainingTimeWidget:
     def update_label(self):
         remaining = self.compute_remaining()
         if remaining is None:
-            text = "Time: --:--"
-            color = GREEN
+            text = "Time: --"
+            color = COLOR_NORMAL
         elif remaining <= 0:
             text = "Time's up"
-            color = RED
+            color = COLOR_CRITICAL
         else:
-            text = f"Time left: {format_remaining(remaining)}"
+            text = f"{format_remaining(remaining)} remaining"
             color = color_for(remaining)
 
         self.label.config(text=text, fg=color)
