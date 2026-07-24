@@ -10,8 +10,8 @@ from pathlib import Path
 TARGET_USER = "elias"  # as it shows up in `query user`
 
 # Reachable from the child's account; C:\Users\Public is readable by everyone.
-REDEEM_FILE_PATH = Path(r"C:\Users\Public\eli_redeem_time.txt")
-REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Public\eli_remaining_time.txt")
+REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
+REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Elias\Desktop\remaining_time.txt")
 
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"
@@ -25,7 +25,7 @@ NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
 STARTUP_DELAY_SECONDS = 60  # wait after boot before the first check
 
 EARLIEST_HOUR_INCLUDED = 6
-LATEST_HOUR_INCLUDED = 20
+LATEST_HOUR_INCLUDED = 24
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128

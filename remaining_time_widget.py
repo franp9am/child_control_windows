@@ -1,5 +1,9 @@
 """
-Small always-on-top overlay showing remaining screen time.
+Small overlay showing remaining screen time.
+
+Sits at the bottom of the window z-order, so it only shows through when
+the desktop is empty and gets covered naturally by whatever window is
+opened (or maximized) on top of it.
 
 Run this in the CHILD's own login session (e.g. via a shortcut in their
 Startup folder), not under the system account that runs monitor.py.
@@ -9,6 +13,7 @@ child's account needs read access to that one file rather than to
 monitor.py's hidden folder. Keep config.py next to it.
 """
 
+import ctypes
 import math
 import tkinter as tk
 
@@ -51,11 +56,19 @@ def color_for(seconds):
     return COLOR_NORMAL
 
 
+# Pin the widget to the very bottom of the window z-order instead of the top,
+# so it only shows through on an empty desktop and is naturally covered by
+# whatever window the child opens (or maximizes) over it.
+_HWND_BOTTOM = 1
+_SWP_NOMOVE = 0x0002
+_SWP_NOSIZE = 0x0001
+_SWP_NOACTIVATE = 0x0010
+
+
 class RemainingTimeWidget:
     def __init__(self):
         self.root = tk.Tk()
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", OPACITY)
         self.root.configure(bg="black")
 
@@ -73,6 +86,8 @@ class RemainingTimeWidget:
         # overrideredirect windows get no OS close button
         self.root.bind_all("<Alt-F4>", lambda e: self.root.destroy())
 
+        self.root.update_idletasks()
+        self._send_to_bottom()
         self.update_label()
 
     def _position_top_right(self):
@@ -81,6 +96,18 @@ class RemainingTimeWidget:
         x = screen_width - width - MARGIN_PX
         y = MARGIN_PX
         self.root.geometry(f"+{x}+{y}")
+
+    def _send_to_bottom(self):
+        hwnd = self.root.winfo_id()
+        ctypes.windll.user32.SetWindowPos(
+            hwnd,
+            _HWND_BOTTOM,
+            0,
+            0,
+            0,
+            0,
+            _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE,
+        )
 
     def compute_remaining(self):
         try:
@@ -103,6 +130,7 @@ class RemainingTimeWidget:
 
         self.label.config(text=text, fg=color)
         self._position_top_right()
+        self._send_to_bottom()
         self.root.after(POLL_INTERVAL_MS, self.update_label)
 
     def run(self):

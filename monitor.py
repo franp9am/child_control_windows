@@ -204,6 +204,11 @@ def handle_redeem_file():
         }
 
     if not REDEEM_FILE_PATH.is_file():
+        try:
+            REDEEM_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            REDEEM_FILE_PATH.touch()
+        except Exception:
+            pass
         return {
             "status": "no_file",
             "redeem_code": None,

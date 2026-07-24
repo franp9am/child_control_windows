@@ -29,10 +29,21 @@ if (-not $isAdmin) {
 
 foreach ($t in @($MonitorTaskName, $WidgetTaskName)) {
     if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskName $t -Confirm:$false
         Write-Host "Removed scheduled task '$t'" -ForegroundColor Green
     }
 }
+
+# Stopping the task doesn't always kill an already-running instance launched by
+# a previous boot, so also kill any monitor.py/widget process directly by
+# command line before deleting their folders.
+Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" |
+    Where-Object { $_.CommandLine -match [regex]::Escape($MonitorDir) -or $_.CommandLine -match [regex]::Escape($WidgetDir) } |
+    ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        Write-Host "Stopped running process (PID $($_.ProcessId))" -ForegroundColor Green
+    }
 
 if (Test-Path $WidgetDir) {
     Remove-Item -LiteralPath $WidgetDir -Recurse -Force

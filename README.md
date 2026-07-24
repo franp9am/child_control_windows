@@ -17,24 +17,23 @@ For the common case there is now an installer that does every step below for you
 
 1. Make sure the **child has a non-admin Windows account**.
 2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there.
-3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
+3. Put the shared secret (hex) in `data\sec.txt`, next to `install.ps1`. Generate one with, e.g.:
+   ```
+   python -c "import secrets; print(secrets.token_hex(16))"
+   ```
+   Use the **same** secret on the parent's machine for `create_code.py`.
+4. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
    * copy `monitor.py` + `config.py` + `data\` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects the secret in `data\sec.txt`),
    * copy the overlay widget + `config.py` into `C:\ProgramData\ScreenTimeWidget` (child-readable),
-   * prompt you once for the shared secret (hex) and write it to `data\sec.txt`,
+   * copy `data\sec.txt` (if present) to `C:\ProgramData\ScreenTime\data\sec.txt`, leaving any existing secret there untouched otherwise,
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.
-4. Reboot. The monitor runs from boot; the widget appears when the child logs in.
+5. Reboot. The monitor runs from boot; the widget appears when the child logs in.
 
 To remove everything, right-click `uninstall.ps1` -> Run with PowerShell (add `-KeepData` to keep the usage/history files).
 
 **The installer does not do the two BIOS/BitLocker steps in the Safety section** -- those are still manual, and without them the setup is bypassable.
-
-Generate a secret to paste at the prompt with, e.g.:
-```
-python -c "import secrets; print(secrets.token_hex(16))"
-```
-Use the **same** secret on the parent's machine for `create_code.py`.
 
 ## Manual setup
 

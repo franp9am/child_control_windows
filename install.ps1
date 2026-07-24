@@ -15,11 +15,22 @@ $childUser = [regex]::Match((Get-Content -Raw "$src\config.py"), 'TARGET_USER\s*
 if (-not $childUser) { throw "Set TARGET_USER in config.py first." }
 
 # Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
-$python = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+# Must be a machine-wide install under Program Files, not whatever python.exe
+# happens to resolve off the invoking (admin) user's PATH -- a per-user install
+# living under that user's own profile is inaccessible to the child's account,
+# which makes the widget task fail with Access Denied when it tries to launch it.
+$targetDir = "C:\Python311"   # no spaces -- avoids quoting the override string has to survive PowerShell -> winget -> installer
+$python = (Get-ChildItem "C:\Program Files\Python3*\python.exe", "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 if (-not $python) {
-    winget install --id Python.Python.3.11 -e --scope machine --accept-package-agreements --accept-source-agreements
-    $python = (Get-ChildItem "C:\Program Files\Python3*\python.exe" | Select-Object -First 1).FullName
+    # --scope machine alone isn't enough: if a per-user install of the same
+    # version already exists (e.g. under the admin's own profile), winget/the
+    # Python installer tries to convert it in place instead of installing
+    # fresh under Program Files. Force an explicit target dir to avoid that.
+    $override = "/quiet InstallAllUsers=1 PrependPath=0 TargetDir=$targetDir"
+    winget install --id Python.Python.3.11 -e --scope machine --accept-package-agreements --accept-source-agreements --override $override
+    $python = (Get-ChildItem "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 }
+if (-not $python) { throw "Could not find or install a machine-wide Python under C:\Program Files." }
 $pythonw = Join-Path (Split-Path $python) pythonw.exe   # windowless twin, for the widget
 
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
@@ -29,8 +40,14 @@ Copy-Item "$src\monitor.py", "$src\config.py" $MonitorDir -Force
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
 
 # Shared secret -> data\sec.txt (must match create_code.py on the parent's machine).
-$secret = (Read-Host "Shared secret in hex (leave blank to keep the existing one)").Trim()
-if ($secret) { Set-Content "$MonitorDir\data\sec.txt" $secret.ToLower() -NoNewline -Encoding ASCII }
+# Put it in "$src\data\sec.txt" before running this script; if it's missing, whatever
+# secret is already at $MonitorDir\data\sec.txt (if any) is left untouched.
+$srcSecret = "$src\data\sec.txt"
+if (Test-Path $srcSecret) {
+    Copy-Item $srcSecret "$MonitorDir\data\sec.txt" -Force
+} else {
+    Write-Host "No $srcSecret found; keeping the existing secret in $MonitorDir\data\sec.txt (if any)."
+}
 
 # Widget folder: child-readable, holds only the overlay and a copy of config.py.
 New-Item -ItemType Directory -Force $WidgetDir | Out-Null
