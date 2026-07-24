@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create Code</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: #fafafa; color: #1a1a1a;
+  }
+  .grid {
+    display: grid; gap: 1rem; max-width: 1000px; margin: 0 auto;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .card {
+    background: #fff; border: 1px solid #ddd; border-radius: 10px;
+    padding: 1.1rem; display: flex; flex-direction: column; gap: .8rem;
+  }
+  h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+  label { display: block; font-size: .72rem; color: #888; margin-bottom: .25rem; text-transform: uppercase; letter-spacing: .04em; }
+  input {
+    width: 100%; padding: .5rem .6rem; border-radius: 6px;
+    border: 1px solid #ccc; background: #fff; color: #1a1a1a;
+    font-size: .95rem; font-family: inherit;
+  }
+  input:focus { outline: none; border-color: #888; }
+  input.secret { color: #888; }
+  .presets { display: flex; gap: .35rem; margin-top: .45rem; }
+  .presets button {
+    flex: 1; padding: .3rem .1rem; font-size: .78rem; cursor: pointer;
+    background: #f2f2f2; color: #333; border: 1px solid #ccc; border-radius: 5px;
+  }
+  .presets button:hover { background: #e8e8e8; }
+  .code-row { display: flex; gap: .4rem; }
+  .code {
+    flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: .95rem; background: #f6f6f6; cursor: pointer;
+  }
+  .copy {
+    padding: 0 .8rem; border-radius: 6px; border: 1px solid #ccc; cursor: pointer;
+    background: #1a1a1a; color: #fff; font-size: .85rem; white-space: nowrap;
+  }
+  .copy:active { transform: translateY(1px); }
+</style>
+</head>
+<body>
+  <div class="grid" id="grid"></div>
+
+<script>
+// ---- HMAC-SHA256 via the built-in Web Crypto API ----
+function hexToBytes(hex) {
+  const b = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) b[i/2] = parseInt(hex.substr(i,2),16);
+  return b;
+}
+
+// ---- Mirror of create_code.py / config.py ----
+const SIGNATURE_CHARS = 4;   // config.SIGNATURE_CHARS
+const DEFAULT_EXTRA_SEC = 3600;
+async function getCode(secretHex, extraSec, date) {
+  const payload = date + ":" + extraSec;
+  const key = await crypto.subtle.importKey("raw", hexToBytes(secretHex), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const sig = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return payload + ":" + sig.slice(0, SIGNATURE_CHARS);
+}
+function todayISO() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+
+const CHILDREN = [
+  { name: "Kluk-1", secret: "354fe18ab9cdcaa1" },
+  { name: "Kluk-2", secret: "354fe18ab9cdcaa2" },
+  { name: "Robin", secret: "354fe18ab9cdcaa3" },
+];
+const PRESETS = [
+  { label: "15 min", sec: 900 },
+  { label: "30 min", sec: 1800 },
+  { label: "1 h", sec: 3600 },
+  { label: "2 h", sec: 7200 },
+];
+
+const grid = document.getElementById("grid");
+CHILDREN.forEach(child => {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <h2>${child.name}</h2>
+    <div>
+      <label>Secret</label>
+      <input type="text" class="secret" value="${child.secret}" readonly>
+    </div>
+    <div>
+      <label>Date</label>
+      <input type="text" class="date" value="${todayISO()}">
+    </div>
+    <div>
+      <label>Extra seconds</label>
+      <input type="number" class="sec" min="1" step="1" value="${DEFAULT_EXTRA_SEC}">
+      <div class="presets"></div>
+    </div>
+    <div>
+      <label>Code</label>
+      <div class="code-row">
+        <input type="text" class="code" readonly>
+        <button class="copy">Copy</button>
+      </div>
+    </div>
+  `;
+  grid.appendChild(card);
+
+  const dateInput = card.querySelector(".date");
+  const secInput = card.querySelector(".sec");
+  const codeInput = card.querySelector(".code");
+  const copyBtn = card.querySelector(".copy");
+  const presetsWrap = card.querySelector(".presets");
+
+  PRESETS.forEach(p => {
+    const b = document.createElement("button");
+    b.textContent = p.label;
+    b.addEventListener("click", () => { secInput.value = p.sec; update(); });
+    presetsWrap.appendChild(b);
+  });
+
+  // date is a nonce that must not contain ":" — strip it as the user types
+  dateInput.addEventListener("input", () => {
+    if (dateInput.value.includes(":")) dateInput.value = dateInput.value.replace(/:/g, "");
+    update();
+  });
+  secInput.addEventListener("input", update);
+
+  // click the code field to select it all for easy copy-paste
+  codeInput.addEventListener("focus", () => codeInput.select());
+  codeInput.addEventListener("click", () => codeInput.select());
+
+  copyBtn.addEventListener("click", () => {
+    codeInput.select();
+    const done = () => { copyBtn.textContent = "Copied"; setTimeout(() => copyBtn.textContent = "Copy", 1200); };
+    if (navigator.clipboard) navigator.clipboard.writeText(codeInput.value).then(done, () => { document.execCommand("copy"); done(); });
+    else { document.execCommand("copy"); done(); }
+  });
+
+  async function update() {
+    const sec = parseInt(secInput.value, 10);
+    const date = dateInput.value;
+    codeInput.value = (date && Number.isInteger(sec) && sec >= 1) ? await getCode(child.secret, sec, date) : "";
+  }
+  update();
+});
+</script>
+</body>
+</html>
