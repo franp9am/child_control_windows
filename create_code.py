@@ -33,7 +33,8 @@ def get_code(extra_sec=3600, date=None):
         date = datetime.date.today().isoformat()
 
     # The date is a nonce that keeps each code unique; it is part of the signed
-    # payload but is not validated against the real calendar on redemption.
+    # payload and is only validated against the real calendar on redemption if
+    # EXACT_DATE_CHECK is enabled in config.py.
     payload = f"{date}:{extra_sec}"
     sign = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}:{sign[:SIGNATURE_CHARS]}"

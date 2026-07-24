@@ -19,10 +19,12 @@ from pathlib import Path
 from typing import Optional
 
 from config import (
+    CARRYOVER,
     CHECK_INTERVAL_SECONDS,
     DAILY_LIMIT_SECONDS,
     DATA_DIR,
     EARLIEST_HOUR_INCLUDED,
+    EXACT_DATE_CHECK,
     LATEST_HOUR_INCLUDED,
     MAX_REDEEM_FILE_BYTES,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
@@ -265,13 +267,20 @@ def handle_redeem_file():
         }
 
     req_sig = parts[2]
-    # The date is a signed nonce, deliberately not checked against the real
-    # calendar: it only keeps otherwise-identical codes distinct.
+    # The date is a signed nonce that keeps otherwise-identical codes distinct.
+    # It's only checked against the real calendar if EXACT_DATE_CHECK is set.
     extracted_payload = f"{req_date}:{req_extra_time}".encode()
 
     if not verify(extracted_payload, req_sig):
         return {
             "status": "invalid signature",
+            "redeem_code": redeem_content,
+            "extra_time_sec": 0,
+        }
+
+    if EXACT_DATE_CHECK and req_date != datetime.date.today().isoformat():
+        return {
+            "status": "date mismatch",
             "redeem_code": redeem_content,
             "extra_time_sec": 0,
         }
@@ -292,7 +301,7 @@ def main():
         is_new_day = not datafile.is_file()
         data = load_data(datafile)
 
-        if is_new_day:
+        if is_new_day and CARRYOVER:
             carryover = compute_carryover_sec(now.date())
             if carryover > 0:
                 data["extra_time_sec"] = carryover
