@@ -15,12 +15,14 @@ import json
 import os
 import subprocess
 import time
+import traceback
 from pathlib import Path
 from typing import Optional
 
 from config import (
     CARRYOVER,
     CHECK_INTERVAL_SECONDS,
+    CRASH_LOG_FILE,
     DAILY_LIMIT_SECONDS,
     DATA_DIR,
     EARLIEST_HOUR_INCLUDED,
@@ -91,17 +93,23 @@ def is_night_time():
 
 
 def load_data(datafile):
+    # A file that parses but is missing keys (or isn't a dict at all) must not
+    # crash the loop, so defaults fill in whatever is absent.
+    data = {
+        "time_spent_sec": 0,
+        "ticks": [],
+        "last_tick": None,
+        "extra_time_sec": 0,
+        "event_log": [],
+    }
     try:
         with open(datafile, "r", encoding="utf-8") as f:
-            return json.load(f)
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            data.update(loaded)
     except Exception:
-        return {
-            "time_spent_sec": 0,
-            "ticks": [],
-            "last_tick": None,
-            "extra_time_sec": 0,
-            "event_log": [],
-        }
+        pass
+    return data
 
 
 def save_data(data, datafile):
@@ -137,6 +145,16 @@ def write_remaining_time_file(remaining_sec):
         os.replace(tmp_file, target)
     except Exception:
         pass  # not critical
+
+
+def log_unexpected_error():
+    """Append the current traceback to the crash log; never raise itself."""
+    try:
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(CRASH_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"--- {now_str} ---\n{traceback.format_exc()}\n")
+    except Exception:
+        pass
 
 
 def query_users():
@@ -315,59 +333,72 @@ def ensure_datafile(datafile, now):
 def main():
     # publish the remaining time immediately, before the startup delay, so a
     # stale value from yesterday isn't shown even for the first minute
-    data = ensure_datafile(get_datafile(), datetime.datetime.now())
-    write_remaining_time_file(DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"])
+    try:
+        data = ensure_datafile(get_datafile(), datetime.datetime.now())
+        write_remaining_time_file(DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"])
+    except Exception:
+        log_unexpected_error()
 
     time.sleep(STARTUP_DELAY_SECONDS)  # wait for the redeem file to be created
 
     while True:
-        now = datetime.datetime.now()
-        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        datafile = get_datafile()
-        data = ensure_datafile(datafile, now)
+        # A transient failure (locked file, redeem file vanishing mid-check,
+        # odd data on disk) must not kill the monitor: log it, skip this tick
+        # and try again, instead of leaving the machine unrestricted.
+        try:
+            now = datetime.datetime.now()
+            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            datafile = get_datafile()
+            data = ensure_datafile(datafile, now)
 
-        is_logged_in = user_logged_in()
+            is_logged_in = user_logged_in()
 
-        if is_logged_in:
-            if is_night_time():
-                send_message(message="Night time")
-                data["event_log"].append(f"Night time {now_str}")
-                save_data(data, datafile)
-                write_remaining_time_file(0)
-                shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
-                return
-
-            redeem = handle_redeem_file()
-            if redeem and redeem["status"] == "valid":
-                used_codes = load_used_codes()
-                if redeem["redeem_code"] not in used_codes:
-                    # redeem code is valid and not used yet
-                    used_codes.add(redeem["redeem_code"])
-                    save_used_codes(used_codes)
-                    extra_time = redeem["extra_time_sec"]
-                    data["event_log"].append(f"redeem code {extra_time} {now_str}")
-                    data["extra_time_sec"] += extra_time
-                    send_message(message=f"extra time {extra_time}")
+            if is_logged_in:
+                if is_night_time():
+                    # enforce first; bookkeeping below may fail without
+                    # cancelling the shutdown
+                    shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
+                    write_remaining_time_file(0)
+                    send_message(message="Night time")
+                    data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
+                    return
 
-            limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
-            if data["time_spent_sec"] >= limit:
-                send_message(message="time up")
-                data["event_log"].append(f"time up {now_str}")
+                redeem = handle_redeem_file()
+                if redeem and redeem["status"] == "valid":
+                    used_codes = load_used_codes()
+                    if redeem["redeem_code"] not in used_codes:
+                        # redeem code is valid and not used yet
+                        used_codes.add(redeem["redeem_code"])
+                        save_used_codes(used_codes)
+                        extra_time = redeem["extra_time_sec"]
+                        data["event_log"].append(f"redeem code {extra_time} {now_str}")
+                        data["extra_time_sec"] += extra_time
+                        send_message(message=f"extra time {extra_time}")
+                        save_data(data, datafile)
+
+                limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
+                if data["time_spent_sec"] >= limit:
+                    # enforce first; bookkeeping below may fail without
+                    # cancelling the shutdown
+                    shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)
+                    write_remaining_time_file(0)
+                    send_message(message="time up")
+                    data["event_log"].append(f"time up {now_str}")
+                    save_data(data, datafile)
+                    return
+
+                data["time_spent_sec"] += CHECK_INTERVAL_SECONDS
+                data["ticks"].append(now_str)
+                data["last_tick"] = now_str
                 save_data(data, datafile)
-                write_remaining_time_file(0)
-                shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)
-                return
-
-            data["time_spent_sec"] += CHECK_INTERVAL_SECONDS
-            data["ticks"].append(now_str)
-            data["last_tick"] = now_str
-            save_data(data, datafile)
-            remaining = limit - data["time_spent_sec"]
-            write_remaining_time_file(remaining)
-        else:
-            # not logged in, nothing to report
-            pass
+                remaining = limit - data["time_spent_sec"]
+                write_remaining_time_file(remaining)
+            else:
+                # not logged in, nothing to report
+                pass
+        except Exception:
+            log_unexpected_error()
 
         time.sleep(CHECK_INTERVAL_SECONDS)
 

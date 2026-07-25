@@ -17,6 +17,7 @@ REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Elias\Desktop\remaining_time.txt")
 DATA_DIR = Path(__file__).parent / "data"
 SECRET_FILE = DATA_DIR / "sec.txt"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
+CRASH_LOG_FILE = DATA_DIR / "crash.log"
 
 CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
 # and redeemed codes only count for the day they're redeemed on.
