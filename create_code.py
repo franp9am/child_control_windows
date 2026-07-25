@@ -8,21 +8,20 @@ import hashlib
 import hmac
 import os
 
-from config import SECRET_FILE, SIGNATURE_CHARS
+from config import SECRET_HEX, SIGNATURE_CHARS
 
-# make sure the secret is set and is equal to the on in childs computed monitor.py script
-sec = os.environ.get("CHILD_SECRET")
-if sec is None:
-    try:
-        with open(SECRET_FILE, "r") as f:
-            sec = f.read().strip()
-    except FileNotFoundError:
-        pass
-
-if sec is None:
-    raise ValueError(f"CHILD_SECRET is not set and {SECRET_FILE} not found")
-
-secret = bytes.fromhex(sec)
+# The secret must equal the one in config.py on the child's machine. The
+# CHILD_SECRET env var overrides config.py if set.
+sec = os.environ.get("CHILD_SECRET", SECRET_HEX)
+try:
+    secret = bytes.fromhex(sec.strip())
+except ValueError:
+    secret = b""
+if not secret:
+    raise ValueError(
+        "Set SECRET_HEX in config.py (or the CHILD_SECRET env var) "
+        "to the shared secret used on the child's machine"
+    )
 
 
 def get_code(extra_sec=3600, date=None):

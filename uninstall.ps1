@@ -3,7 +3,7 @@
 
     Right-click -> "Run with PowerShell" (it self-elevates). It unregisters the
     two scheduled tasks and deletes the install folders. Pass -KeepData to leave
-    the data\ folder (used codes, per-day json, sec.txt) in place.
+    the data\ folder (used codes, per-day json) in place.
 #>
 [CmdletBinding()]
 param(

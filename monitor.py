@@ -32,7 +32,7 @@ from config import (
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
-    SECRET_FILE,
+    SECRET_HEX,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
@@ -43,9 +43,8 @@ from config import (
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 try:
-    with open(SECRET_FILE, "r") as f:  # path with secret password
-        SECRET = bytes.fromhex(f.read().strip())
-except Exception as e:
+    SECRET = bytes.fromhex(SECRET_HEX.strip())
+except Exception as e:  # placeholder or malformed hex -> run without a secret
     print(f"Error loading secret: {e}")
     SECRET = b""
 

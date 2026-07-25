@@ -16,20 +16,18 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 For the common case there is now an installer that does every step below for you.
 
 1. Make sure the **child has a non-admin Windows account**.
-2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there.
-3. Put the shared secret (hex) in `data\sec.txt`, next to `install.ps1`. Generate one with, e.g.:
+2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `SECRET_HEX` (the shared secret), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there and refuses to run while `SECRET_HEX` still holds the placeholder. Generate a secret with, e.g.:
    ```
    python -c "import secrets; print(secrets.token_hex(16))"
    ```
-   Use the **same** secret on the parent's machine for `create_code.py`.
-4. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
+   Use the **same** secret in the `config.py` on the parent's machine for `create_code.py`, and don't commit the real value to a public repo.
+3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
-   * copy `monitor.py` + `config.py` + `data\` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects the secret in `data\sec.txt`),
-   * copy the overlay widget + `config.py` into `C:\ProgramData\ScreenTimeWidget` (child-readable),
-   * copy `data\sec.txt` (if present) to `C:\ProgramData\ScreenTime\data\sec.txt`, leaving any existing secret there untouched otherwise,
+   * copy `monitor.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects the secret in `config.py`),
+   * copy the overlay widget into `C:\ProgramData\ScreenTimeWidget` (child-readable; the widget is self-contained and gets the remaining-time file path as a task argument, so no config goes there),
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.
-5. Reboot. The monitor runs from boot; the widget appears when the child logs in.
+4. Reboot. The monitor runs from boot; the widget appears when the child logs in.
 
 To remove everything, right-click `uninstall.ps1` -> Run with PowerShell (add `-KeepData` to keep the usage/history files).
 
@@ -58,23 +56,23 @@ but I didn't test it.
   * `EXACT_DATE_CHECK` -- if `True`, a code's embedded date must match the real, current calendar date or it's rejected; if `False` (default) the date is just a nonce and codes can be redeemed any day
   * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
   * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
+  * `SECRET_HEX` -- the shared secret for signing extra-time codes; must match the parent's machine
   * `REDEEM_FILE_PATH` -- path to a local file the children can access, to write a code in case you grant him extra time
-  * `DATA_DIR` -- where the per-day json files, the used-code list and `sec.txt` live
+  * `DATA_DIR` -- where the per-day json files and the used-code list live
 
-  The rest (poll intervals, the overlay's colours and font, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
+  The rest (poll intervals, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
 
 
 ## Remaining time overlay
 
-`remaining_time_widget.py` shows a small always-on-top "time left" box in the top-right corner of the child's screen. monitor.py publishes the seconds remaining today to `REMAINING_TIME_FILE_PATH` (defaults to `C:\Users\Public\eli_remaining_time.txt`, alongside the redeem file) on every tick; the widget only reads that one file, so it never needs access to `data/` or `sec.txt`.
+`remaining_time_widget.py` shows a small always-on-top "time left" box in the top-right corner of the child's screen. monitor.py publishes the seconds remaining today to `REMAINING_TIME_FILE_PATH` on every tick; the widget only reads that one file and is fully self-contained -- it never touches `config.py` or the locked monitor folder.
 
 Setup, run under the **child's own account** (not SYSTEM):
 * Nothing extra to grant — `C:\Users\Public\` is readable by all local accounts by default, same as the redeem file already relies on.
-* Copy `config.py` next to `remaining_time_widget.py`, it reads its settings from there too. The copy holds only paths and colours, no secret, but its `REMAINING_TIME_FILE_PATH` must match the one monitor.py uses.
-* Colours, font and poll interval of the overlay are the last block of config.py.
+* The widget takes the remaining-time file path as its first command-line argument (the installer fills it in from config.py's `REMAINING_TIME_FILE_PATH`); without an argument it falls back to the default at the top of the script. Colours, font and poll interval are in the same block.
 * Put a shortcut to it in the child's Startup folder (`shell:startup`), targeting `pythonw.exe` (not `python.exe`, so no console window appears), e.g.
 ```
-C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py
+C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py C:\Users\Public\remaining_time.txt
 ```
 * The child can close the widget window with Alt+F4 if they want; this is just a visual reminder, the actual enforcement is done by monitor.py.
 
@@ -94,7 +92,7 @@ A typical code can look like 3600:a184 which would grant an extra hour (3600 sec
 The child writes this code to the file specified in monitor.py text document.
 
 To generate the codes, the parent can run the create_code.py script on his machine.
-Both machines share a secret password which should not be shared with the child.
+Both machines share a secret password (`SECRET_HEX` in each machine's `config.py`) which should not be shared with the child.
 
 
 ## Python dependencies

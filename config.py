@@ -1,5 +1,7 @@
 """
-All settings for monitor.py, remaining_time_widget.py and create_code.py.
+All settings for monitor.py and create_code.py. This file holds the shared
+secret, so it must never be readable from the child's account (the installer
+copies it only into the locked monitor folder).
 
 Plain python, so keep the quotes and the r"..." prefixes on the windows
 paths intact -- a syntax error here stops monitor.py from starting.
@@ -13,9 +15,11 @@ TARGET_USER = "elias"  # as it shows up in `query user`
 REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
 REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Elias\Desktop\remaining_time.txt")
 
+# Shared secret (hex) for signing redeem codes -- must be the same here and in
+SECRET_HEX = "11"  # change this to bytes in hex format
+
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"
-SECRET_FILE = DATA_DIR / "sec.txt"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
 CRASH_LOG_FILE = DATA_DIR / "crash.log"
 
@@ -37,14 +41,5 @@ LATEST_HOUR_INCLUDED = 20
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
 
-# Overlay
-POLL_INTERVAL_MS = 5000
-MARGIN_PX = 20
-OPACITY = 0.85
-FONT_FAMILY = "Segoe UI"
-FONT_SIZE = 14
-WARNING_SECONDS = 15 * 60  # orange below this
-CRITICAL_SECONDS = 5 * 60  # red below this
-COLOR_NORMAL = "#2ecc71"
-COLOR_WARNING = "#f39c12"
-COLOR_CRITICAL = "#e74c3c"
+# The overlay widget's display settings (colours, font, poll interval) live at
+# the top of remaining_time_widget.py itself -- nothing else uses them.

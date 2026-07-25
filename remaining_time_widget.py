@@ -8,28 +8,34 @@ opened (or maximized) on top of it.
 Run this in the CHILD's own login session (e.g. via a shortcut in their
 Startup folder), not under the system account that runs monitor.py.
 
-It only reads REMAINING_TIME_FILE_PATH and never writes to it, so the
-child's account needs read access to that one file rather than to
-monitor.py's hidden folder. Keep config.py next to it.
+It is self-contained: it only reads the remaining-time file monitor.py
+publishes and never touches config.py or the locked monitor folder. The
+path of that file is taken from the first command-line argument (install.ps1
+fills it in from config.py's REMAINING_TIME_FILE_PATH); without an argument
+the default below is used.
 """
 
 import ctypes
 import math
+import sys
 import tkinter as tk
 
-from config import (
-    COLOR_CRITICAL,
-    COLOR_NORMAL,
-    COLOR_WARNING,
-    CRITICAL_SECONDS,
-    FONT_FAMILY,
-    FONT_SIZE,
-    MARGIN_PX,
-    OPACITY,
-    POLL_INTERVAL_MS,
-    REMAINING_TIME_FILE_PATH,
-    WARNING_SECONDS,
-)
+# Only used when no path is passed on the command line; must then match
+# REMAINING_TIME_FILE_PATH in monitor.py's config.py.
+DEFAULT_REMAINING_TIME_FILE = r"C:\Users\Public\remaining_time.txt"
+REMAINING_TIME_FILE_PATH = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE
+
+# Display settings -- used by nothing but this widget.
+POLL_INTERVAL_MS = 5000
+MARGIN_PX = 20
+OPACITY = 0.85
+FONT_FAMILY = "Segoe UI"
+FONT_SIZE = 14
+WARNING_SECONDS = 15 * 60  # orange below this
+CRITICAL_SECONDS = 5 * 60  # red below this
+COLOR_NORMAL = "#2ecc71"
+COLOR_WARNING = "#f39c12"
+COLOR_CRITICAL = "#e74c3c"
 
 
 def format_remaining(seconds):
