@@ -285,9 +285,13 @@ def handle_redeem_file():
             "extra_time_sec": 0,
         }
 
+    # Normalize the code so variants like "0600", "+600" or " 600" (all
+    # accepted by int()) count as the same code in the used-codes ledger.
+    normalized_code = f"{req_date}:{req_extra_time}:{req_sig}"
+
     return {
         "status": "valid",
-        "redeem_code": redeem_content,
+        "redeem_code": normalized_code,
         "extra_time_sec": req_extra_time,
     }
 
