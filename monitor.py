@@ -85,9 +85,9 @@ def compute_carryover_sec(today: datetime.date) -> int:
     return leftover + missing_days * DAILY_LIMIT_SECONDS
 
 
-def check_not_night_time():
+def is_night_time():
     hour = datetime.datetime.now().hour
-    return EARLIEST_HOUR_INCLUDED <= hour <= LATEST_HOUR_INCLUDED
+    return not (EARLIEST_HOUR_INCLUDED <= hour <= LATEST_HOUR_INCLUDED)
 
 
 def load_data(datafile):
@@ -292,26 +292,40 @@ def handle_redeem_file():
     }
 
 
+def ensure_datafile(datafile, now):
+    """Create today's datafile if it doesn't exist yet, applying carryover if
+    configured; otherwise just load what's already there."""
+    if datafile.is_file():
+        return load_data(datafile)
+    data = load_data(datafile)  # defaults, since the file doesn't exist
+    if CARRYOVER:
+        carryover = compute_carryover_sec(now.date())
+        if carryover > 0:
+            data["extra_time_sec"] = carryover
+            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            data["event_log"].append(f"carryover {carryover} sec from previous day {now_str}")
+    save_data(data, datafile)
+    return data
+
+
 def main():
+    # publish the remaining time immediately, before the startup delay, so a
+    # stale value from yesterday isn't shown even for the first minute
+    data = ensure_datafile(get_datafile(), datetime.datetime.now())
+    write_remaining_time_file(DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"])
+
     time.sleep(STARTUP_DELAY_SECONDS)  # wait for the redeem file to be created
+
     while True:
         now = datetime.datetime.now()
         now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         datafile = get_datafile()
-        is_new_day = not datafile.is_file()
-        data = load_data(datafile)
-
-        if is_new_day and CARRYOVER:
-            carryover = compute_carryover_sec(now.date())
-            if carryover > 0:
-                data["extra_time_sec"] = carryover
-                data["event_log"].append(f"carryover {carryover} sec from previous day {now_str}")
-                save_data(data, datafile)
+        data = ensure_datafile(datafile, now)
 
         is_logged_in = user_logged_in()
 
         if is_logged_in:
-            if not check_not_night_time():
+            if is_night_time():
                 send_message(message="Night time")
                 data["event_log"].append(f"Night time {now_str}")
                 save_data(data, datafile)

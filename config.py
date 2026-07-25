@@ -18,10 +18,10 @@ DATA_DIR = Path(__file__).parent / "data"
 SECRET_FILE = DATA_DIR / "sec.txt"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
 
-CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
+CARRYOVER = False  # if False, leftover/unused time never rolls to the next day
 # and redeemed codes only count for the day they're redeemed on.
 
-EXACT_DATE_CHECK = False  # if True, a code's embedded date must match today's
+EXACT_DATE_CHECK = True  # if True, a code's embedded date must match today's
 # real calendar date, or it's rejected as invalid.
 
 DAILY_LIMIT_SECONDS = 120 * 60
@@ -31,7 +31,7 @@ NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
 STARTUP_DELAY_SECONDS = 60  # wait after boot before the first check
 
 EARLIEST_HOUR_INCLUDED = 6
-LATEST_HOUR_INCLUDED = 24
+LATEST_HOUR_INCLUDED = 20
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
