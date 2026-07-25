@@ -6,8 +6,9 @@ TARGET_USER = "elias"  # as it shows up in `query user`
 REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
 REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Elias\Desktop\remaining_time.txt")
 
-# Shared secret (hex) for signing redeem codes -- must be the same here and in
-SECRET_HEX = "11"  # change this to bytes in hex format
+# Shared secret (hex) for signing redeem codes -- must be the same here and on
+# the parent's machine (create_code.py). At least 8 bytes = 16 hex characters;
+SECRET_HEX = ""
 
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"

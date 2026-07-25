@@ -16,10 +16,11 @@ $childUser = [regex]::Match($configText, 'TARGET_USER\s*=\s*["'']([^"'']+)').Gro
 if (-not $childUser) { throw "Set TARGET_USER in config.py first." }
 
 # The shared secret also lives in config.py (protected later by the folder
-# ACL). Refuse to install while the placeholder is still there.
+# ACL). Refuse to install while it is unset or too weak: at least 8 bytes,
+# i.e. 16 hex characters.
 $secretHex = [regex]::Match($configText, 'SECRET_HEX\s*=\s*["'']([^"'']*)').Groups[1].Value
 if ($secretHex -notmatch '^[0-9a-fA-F]{16,}$' -or $secretHex.Length % 2 -ne 0) {
-    throw "Set SECRET_HEX in config.py to the shared secret first (generate with: python -c `"import secrets; print(secrets.token_hex(16))`")."
+    throw "Set SECRET_HEX in config.py to the shared secret first: at least 8 bytes = 16 hex chars (generate with: python -c `"import secrets; print(secrets.token_hex(16))`")."
 }
 
 # The widget task needs the remaining-time file path as an argument.
