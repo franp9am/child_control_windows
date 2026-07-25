@@ -1,13 +1,3 @@
-"""
-Use this on the child's machine to monitor the time
-and shutdown the machine when the time is up.
-
-This script should be run on startup under system account
-and not be accessible from the childs account.
-
-All settings live in config.py next to this file.
-"""
-
 import datetime
 import hashlib
 import hmac

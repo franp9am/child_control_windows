@@ -1,18 +1,6 @@
 """
-Small overlay showing remaining screen time.
-
-Sits at the bottom of the window z-order, so it only shows through when
-the desktop is empty and gets covered naturally by whatever window is
-opened (or maximized) on top of it.
-
-Run this in the CHILD's own login session (e.g. via a shortcut in their
-Startup folder), not under the system account that runs monitor.py.
-
-It is self-contained: it only reads the remaining-time file monitor.py
-publishes and never touches config.py or the locked monitor folder. The
-path of that file is taken from the first command-line argument (install.ps1
-fills it in from config.py's REMAINING_TIME_FILE_PATH); without an argument
-the default below is used.
+Small overlay showing remaining screen time. 
+Displays the remaining time information content from a text file.
 """
 
 import ctypes

@@ -1,12 +1,3 @@
-"""
-All settings for monitor.py and create_code.py. This file holds the shared
-secret, so it must never be readable from the child's account (the installer
-copies it only into the locked monitor folder).
-
-Plain python, so keep the quotes and the r"..." prefixes on the windows
-paths intact -- a syntax error here stops monitor.py from starting.
-"""
-
 from pathlib import Path
 
 TARGET_USER = "elias"  # as it shows up in `query user`
@@ -40,6 +31,3 @@ LATEST_HOUR_INCLUDED = 20
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
-
-# The overlay widget's display settings (colours, font, poll interval) live at
-# the top of remaining_time_widget.py itself -- nothing else uses them.
