@@ -10,6 +10,7 @@ class SyncRequest(BaseModel):
     date: str
     time_spent_sec: int
     extra_time_sec: int
+    remaining_sec: int
     last_tick: str | None
     applied_grant_ids: list[int]
 
@@ -33,7 +34,9 @@ def authenticated_device_id(authorization: str) -> int:
     if scheme != "Bearer" or not token:
         raise HTTPException(status_code=401, detail="missing bearer token")
     connection = db.connect()
-    device = connection.execute("SELECT id FROM devices WHERE token = ?", (token,)).fetchone()
+    device = connection.execute(
+        "SELECT id FROM devices WHERE token = :token", {"token": token}
+    ).fetchone()
     connection.close()
     if device is None:
         raise HTTPException(status_code=401, detail="unknown token")
@@ -47,22 +50,41 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
     connection = db.connect()
     with connection:
         connection.execute(
-            """INSERT INTO status (device_id, date, time_spent_sec, extra_time_sec, last_tick, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO status (device_id, date, time_spent_sec, extra_time_sec, remaining_sec,
+                                   last_tick, updated_at)
+               VALUES (:device_id, :date, :time_spent_sec, :extra_time_sec, :remaining_sec,
+                       :last_tick, :updated_at)
                ON CONFLICT (device_id, date) DO UPDATE SET
-                   time_spent_sec = excluded.time_spent_sec,
-                   extra_time_sec = excluded.extra_time_sec,
-                   last_tick = excluded.last_tick,
-                   updated_at = excluded.updated_at""",
-            (device_id, sync_request.date, sync_request.time_spent_sec, sync_request.extra_time_sec, sync_request.last_tick, now),
+                   time_spent_sec = :time_spent_sec,
+                   extra_time_sec = :extra_time_sec,
+                   remaining_sec = :remaining_sec,
+                   last_tick = :last_tick,
+                   updated_at = :updated_at""",
+            {
+                "device_id": device_id,
+                "date": sync_request.date,
+                "time_spent_sec": sync_request.time_spent_sec,
+                "extra_time_sec": sync_request.extra_time_sec,
+                "remaining_sec": sync_request.remaining_sec,
+                "last_tick": sync_request.last_tick,
+                "updated_at": now,
+            },
         )
         connection.executemany(
-            "UPDATE grants SET acked_at = ? WHERE id = ? AND device_id = ? AND acked_at IS NULL",
-            [(now, grant_id, device_id) for grant_id in sync_request.applied_grant_ids],
+            """UPDATE grants SET acked_at = :now
+               WHERE id = :grant_id AND device_id = :device_id AND acked_at IS NULL""",
+            [
+                {"now": now, "grant_id": grant_id, "device_id": device_id}
+                for grant_id in sync_request.applied_grant_ids
+            ],
         )
         pending = connection.execute(
-            "SELECT id, seconds FROM grants WHERE device_id = ? AND acked_at IS NULL ORDER BY id",
-            (device_id,),
+            """SELECT id, seconds FROM grants
+               WHERE device_id = :device_id AND acked_at IS NULL
+               ORDER BY id""",
+            {"device_id": device_id},
         ).fetchall()
     connection.close()
-    return SyncResponse(pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending])
+    return SyncResponse(
+        pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending]
+    )

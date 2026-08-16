@@ -2,7 +2,10 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("CHILD_CONTROL_DB") or Path(__file__).parent / "data.sqlite")
+DB_PATH = Path(
+    os.environ.get("CHILD_CONTROL_DB") or Path(__file__).parent / "data" / "child_control.sqlite"
+)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS devices (
@@ -22,6 +25,7 @@ CREATE TABLE IF NOT EXISTS status (
     date TEXT NOT NULL,
     time_spent_sec INTEGER NOT NULL,
     extra_time_sec INTEGER NOT NULL,
+    remaining_sec INTEGER NOT NULL,
     last_tick TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (device_id, date)
