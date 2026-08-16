@@ -1,7 +1,11 @@
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import db
@@ -25,21 +29,73 @@ class SyncResponse(BaseModel):
     pending_grants: list[PendingGrant]
 
 
-class GrantRequest(BaseModel):
-    device_id: int
-    seconds: int
+RECENT_GRANTS_SHOWN = 3
 
 
-class GrantResponse(BaseModel):
-    id: int
-    device_id: int
-    seconds: int
-    created_at: str
+@dataclass
+class GrantView:
+    minutes: int
+    created: str
+    acknowledged: bool
+
+
+@dataclass
+class LastSeenView:
+    synced: str
+    remaining: str
+
+
+def formatted_local_time(utc_timestamp: str) -> str:
+    return datetime.fromisoformat(utc_timestamp).astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def duration_in_words(seconds: int) -> str:
+    if seconds <= 0:
+        return "no time left"
+    hours, minutes = divmod(seconds // 60, 60)
+    if hours:
+        return f"{hours} h {minutes} min"
+    return f"{minutes} min"
+
+
+def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | None:
+    row = connection.execute(
+        """SELECT remaining_sec, updated_at FROM status
+           WHERE device_id = :device_id
+           ORDER BY date DESC
+           LIMIT 1""",
+        {"device_id": device_id},
+    ).fetchone()
+    if row is None:
+        return None
+    return LastSeenView(
+        synced=formatted_local_time(row["updated_at"]),
+        remaining=duration_in_words(row["remaining_sec"]),
+    )
+
+
+def recent_grants(connection: sqlite3.Connection, device_id: int) -> list[GrantView]:
+    rows = connection.execute(
+        """SELECT seconds, created_at, acked_at FROM grants
+           WHERE device_id = :device_id
+           ORDER BY id DESC
+           LIMIT :limit""",
+        {"device_id": device_id, "limit": RECENT_GRANTS_SHOWN},
+    ).fetchall()
+    return [
+        GrantView(
+            minutes=row["seconds"] // 60,
+            created=formatted_local_time(row["created_at"]),
+            acknowledged=row["acked_at"] is not None,
+        )
+        for row in rows
+    ]
 
 
 db.create_schema()
 
 app = FastAPI()
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 def authenticated_device_id(authorization: str) -> int:
@@ -111,28 +167,51 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+def index(request: Request, device_id: int | None = None) -> HTMLResponse:
+    connection = db.connect()
+    devices = connection.execute("SELECT id, name FROM devices ORDER BY name").fetchall()
+    selected_device = next(
+        (device for device in devices if device["id"] == device_id),
+        devices[0] if devices else None,
+    )
+    if selected_device is None:
+        grants, status = [], None
+    else:
+        grants = recent_grants(connection, selected_device["id"])
+        status = last_seen(connection, selected_device["id"])
+    connection.close()
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "devices": devices,
+            "selected_device": selected_device,
+            "recent_grants": grants,
+            "last_seen": status,
+        },
+    )
+
+
 @app.post("/grants")
-def create_grant(grant_request: GrantRequest) -> GrantResponse:
+async def create_grant(request: Request) -> RedirectResponse:
+    form = await request.form()
+    try:
+        device_id = int(form["device_id"])
+        seconds = int(form["minutes"]) * 60
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="device_id and minutes must be whole numbers")
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     connection = db.connect()
     try:
         with connection:
-            cursor = connection.execute(
+            connection.execute(
                 """INSERT INTO grants (device_id, seconds, created_at)
                    VALUES (:device_id, :seconds, :created_at)""",
-                {
-                    "device_id": grant_request.device_id,
-                    "seconds": grant_request.seconds,
-                    "created_at": created_at,
-                },
+                {"device_id": device_id, "seconds": seconds, "created_at": created_at},
             )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=404, detail="unknown device")
     finally:
         connection.close()
-    return GrantResponse(
-        id=cursor.lastrowid,
-        device_id=grant_request.device_id,
-        seconds=grant_request.seconds,
-        created_at=created_at,
-    )
+    return RedirectResponse(f"/?device_id={device_id}", status_code=303)

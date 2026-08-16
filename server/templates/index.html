@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen time</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: #fafafa; color: #1a1a1a;
+  }
+  .page { max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0 0 1.2rem; font-size: 1.5rem; font-weight: 600; }
+  h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+  .tabs { display: flex; gap: .3rem; border-bottom: 1px solid #ddd; }
+  .tab {
+    padding: .5rem .9rem; font-size: .9rem; text-decoration: none;
+    color: #666; background: #f2f2f2; border: 1px solid #ddd; border-bottom: none;
+    border-radius: 8px 8px 0 0; margin-bottom: -1px;
+  }
+  .tab:hover { background: #e8e8e8; }
+  .tab.selected { background: #fff; color: #1a1a1a; font-weight: 600; }
+  .card {
+    background: #fff; border: 1px solid #ddd; border-top: none;
+    border-radius: 0 0 10px 10px; padding: 1.2rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  h3 { margin: 0 0 .9rem; font-size: 1.05rem; font-weight: 600; }
+  .custom {
+    display: flex; align-items: center; gap: .4rem; width: 22rem; max-width: 100%;
+  }
+  .unit { font-size: .9rem; color: #888; margin-right: .2rem; }
+  .custom input[type="number"] {
+    width: 5rem; padding: .55rem .6rem; border-radius: 6px; text-align: right;
+    border: 1px solid #ccc; background: #fff; color: #1a1a1a;
+    font-size: 1rem; font-family: inherit;
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .custom input[type="number"]:focus { outline: none; border-color: #888; }
+  .custom input::-webkit-inner-spin-button,
+  .custom input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .custom button {
+    flex: 1; padding: .55rem 1rem; border-radius: 6px; border: 1px solid #1a1a1a;
+    cursor: pointer; background: #1a1a1a; color: #fff; font-size: .95rem;
+    white-space: nowrap; font-family: inherit;
+  }
+  .custom button:active { transform: translateY(1px); }
+  .grants { list-style: none; margin: 0; padding: 0; width: 22rem; max-width: 100%; }
+  .grants li {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .45rem .6rem; margin-bottom: .3rem; border-radius: 6px;
+    font-size: .9rem; border: 1px solid;
+  }
+  .grants .amount { font-weight: 600; min-width: 4.5rem; }
+  .grants .age { color: #888; font-size: .85rem; flex: 1; }
+  .grants .badge { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .grants .pending { background: #fce6e3; border-color: #e9a89f; color: #a3170c; }
+  .grants .acknowledged { background: #f5fbf6; border-color: #d5ecd8; color: #4f9e62; }
+  .last-seen {
+    width: 22rem; max-width: 100%; border-collapse: collapse; font-size: .9rem;
+  }
+  .last-seen th, .last-seen td { padding: .45rem .1rem; border-bottom: 1px solid #eee; }
+  .last-seen th { text-align: left; font-weight: 400; color: #888; }
+  .last-seen td { text-align: right; font-weight: 600; }
+  .last-seen tr:last-child th, .last-seen tr:last-child td { border-bottom: none; }
+  .never { margin: 0; font-size: .9rem; color: #888; }
+  .overview button {
+    padding: .55rem 1.2rem; border-radius: 6px; cursor: not-allowed;
+    background: #fff; color: #999; border: 1px dashed #ccc;
+    font-size: .9rem; font-family: inherit;
+  }
+  .empty { color: #888; font-size: .9rem; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <h1>Screen time</h1>
+
+    {% if devices %}
+    <nav class="tabs">
+      {% for device in devices %}
+      <a class="tab {% if device.id == selected_device.id %}selected{% endif %}"
+         href="/?device_id={{ device.id }}">{{ device.name }}</a>
+      {% endfor %}
+    </nav>
+
+    <div class="card">
+      <h2>{{ selected_device.name }}</h2>
+
+      <div>
+        <h3>Grant extra time</h3>
+        <form class="custom" method="post" action="/grants">
+          <input type="hidden" name="device_id" value="{{ selected_device.id }}">
+          <input type="number" name="minutes" step="1" value="30" required>
+          <span class="unit">minutes</span>
+          <button type="submit">Apply</button>
+        </form>
+      </div>
+
+      {% if recent_grants %}
+      <div>
+        <h3>Recent grants</h3>
+        <ul class="grants">
+          {% for grant in recent_grants %}
+          <li class="{{ 'acknowledged' if grant.acknowledged else 'pending' }}">
+            <span class="amount">{% if grant.minutes > 0 %}+{% endif %}{{ grant.minutes }} min</span>
+            <span class="age">{{ grant.created }}</span>
+            <span class="badge">{{ 'applied' if grant.acknowledged else 'waiting' }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <div>
+        <h3>Last seen</h3>
+        {% if last_seen %}
+        <table class="last-seen">
+          <tr>
+            <th>Last sync</th>
+            <td>{{ last_seen.synced }}</td>
+          </tr>
+          <tr>
+            <th>Time remaining</th>
+            <td>{{ last_seen.remaining }}</td>
+          </tr>
+        </table>
+        {% else %}
+        <p class="never">This device has never synced.</p>
+        {% endif %}
+      </div>
+
+      <div class="overview">
+        <button type="button" disabled>Show screentime</button>
+      </div>
+    </div>
+    {% else %}
+    <p class="empty">No devices registered yet. Add one with <code>add_device.py</code>.</p>
+    {% endif %}
+  </div>
+</body>
+</html>
