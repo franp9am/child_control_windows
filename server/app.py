@@ -103,6 +103,14 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
     )
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    connection = db.connect()
+    connection.execute("SELECT count(*) FROM devices").fetchone()
+    connection.close()
+    return {"status": "ok"}
+
+
 @app.post("/grants")
 def create_grant(grant_request: GrantRequest) -> GrantResponse:
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
