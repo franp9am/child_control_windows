@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
@@ -22,6 +23,18 @@ class PendingGrant(BaseModel):
 
 class SyncResponse(BaseModel):
     pending_grants: list[PendingGrant]
+
+
+class GrantRequest(BaseModel):
+    device_id: int
+    seconds: int
+
+
+class GrantResponse(BaseModel):
+    id: int
+    device_id: int
+    seconds: int
+    created_at: str
 
 
 db.create_schema()
@@ -87,4 +100,31 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
     connection.close()
     return SyncResponse(
         pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending]
+    )
+
+
+@app.post("/grants")
+def create_grant(grant_request: GrantRequest) -> GrantResponse:
+    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    connection = db.connect()
+    try:
+        with connection:
+            cursor = connection.execute(
+                """INSERT INTO grants (device_id, seconds, created_at)
+                   VALUES (:device_id, :seconds, :created_at)""",
+                {
+                    "device_id": grant_request.device_id,
+                    "seconds": grant_request.seconds,
+                    "created_at": created_at,
+                },
+            )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=404, detail="unknown device")
+    finally:
+        connection.close()
+    return GrantResponse(
+        id=cursor.lastrowid,
+        device_id=grant_request.device_id,
+        seconds=grant_request.seconds,
+        created_at=created_at,
     )
