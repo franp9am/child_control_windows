@@ -208,4 +208,5 @@ async def create_grant(request: Request) -> RedirectResponse:
         raise HTTPException(status_code=404, detail="unknown device")
     finally:
         connection.close()
-    return RedirectResponse(f"/?device_id={device_id}", status_code=303)
+    target = request.url_for("index").include_query_params(device_id=device_id)
+    return RedirectResponse(str(target), status_code=303)
