@@ -29,14 +29,10 @@ class SyncResponse(BaseModel):
     pending_grants: list[PendingGrant]
 
 
-RECENT_GRANTS_SHOWN = 3
-
-
 @dataclass
 class GrantView:
     minutes: int
     created: str
-    acknowledged: bool
 
 
 @dataclass
@@ -74,19 +70,17 @@ def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | 
     )
 
 
-def recent_grants(connection: sqlite3.Connection, device_id: int) -> list[GrantView]:
+def pending_grants(connection: sqlite3.Connection, device_id: int) -> list[GrantView]:
     rows = connection.execute(
-        """SELECT seconds, created_at, acked_at FROM grants
-           WHERE device_id = :device_id
-           ORDER BY id DESC
-           LIMIT :limit""",
-        {"device_id": device_id, "limit": RECENT_GRANTS_SHOWN},
+        """SELECT seconds, created_at FROM grants
+           WHERE device_id = :device_id AND acked_at IS NULL
+           ORDER BY id DESC""",
+        {"device_id": device_id},
     ).fetchall()
     return [
         GrantView(
             minutes=row["seconds"] // 60,
             created=formatted_local_time(row["created_at"]),
-            acknowledged=row["acked_at"] is not None,
         )
         for row in rows
     ]
@@ -176,9 +170,9 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
         devices[0] if devices else None,
     )
     if selected_device is None:
-        grants, status = [], None
+        waiting, status = [], None
     else:
-        grants = recent_grants(connection, selected_device["id"])
+        waiting = pending_grants(connection, selected_device["id"])
         status = last_seen(connection, selected_device["id"])
     connection.close()
     return templates.TemplateResponse(
@@ -187,7 +181,7 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
         {
             "devices": devices,
             "selected_device": selected_device,
-            "recent_grants": grants,
+            "pending_grants": waiting,
             "last_seen": status,
         },
     )
