@@ -14,7 +14,8 @@ import db
 class SyncRequest(BaseModel):
     date: str
     time_spent_sec: int
-    extra_time_sec: int
+    carryover_sec: int
+    granted_sec: int
     remaining_sec: int
     last_tick: str | None
     applied_grant_ids: list[int]
@@ -113,13 +114,14 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
     connection = db.connect()
     with connection:
         connection.execute(
-            """INSERT INTO status (device_id, date, time_spent_sec, extra_time_sec, remaining_sec,
-                                   last_tick, updated_at)
-               VALUES (:device_id, :date, :time_spent_sec, :extra_time_sec, :remaining_sec,
-                       :last_tick, :updated_at)
+            """INSERT INTO status (device_id, date, time_spent_sec, carryover_sec,
+                                   granted_sec, remaining_sec, last_tick, updated_at)
+               VALUES (:device_id, :date, :time_spent_sec, :carryover_sec,
+                       :granted_sec, :remaining_sec, :last_tick, :updated_at)
                ON CONFLICT (device_id, date) DO UPDATE SET
                    time_spent_sec = :time_spent_sec,
-                   extra_time_sec = :extra_time_sec,
+                   carryover_sec = :carryover_sec,
+                   granted_sec = :granted_sec,
                    remaining_sec = :remaining_sec,
                    last_tick = :last_tick,
                    updated_at = :updated_at""",
@@ -127,7 +129,8 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                 "device_id": device_id,
                 "date": sync_request.date,
                 "time_spent_sec": sync_request.time_spent_sec,
-                "extra_time_sec": sync_request.extra_time_sec,
+                "carryover_sec": sync_request.carryover_sec,
+                "granted_sec": sync_request.granted_sec,
                 "remaining_sec": sync_request.remaining_sec,
                 "last_tick": sync_request.last_tick,
                 "updated_at": now,

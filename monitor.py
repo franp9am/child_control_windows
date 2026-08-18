@@ -67,12 +67,7 @@ def compute_carryover_sec(today: datetime.date) -> int:
         return 0
     prev_date = datetime.date.fromisoformat(prev_file.stem)
     prev_data = load_data(prev_file)
-    leftover = max(
-        0,
-        DAILY_LIMIT_SECONDS
-        + prev_data.get("extra_time_sec", 0)
-        - prev_data.get("time_spent_sec", 0),
-    )
+    leftover = max(0, remaining_seconds(prev_data))
     missing_days = (today - prev_date).days - 1  # fully skipped days, no file
     return min(leftover + missing_days * DAILY_LIMIT_SECONDS, MAX_CARRYOVER_SECONDS)
 
@@ -88,7 +83,8 @@ def load_data(datafile):
         "time_spent_sec": 0,
         "ticks": [],
         "last_tick": None,
-        "extra_time_sec": 0,
+        "carryover_sec": 0,
+        "granted_sec": 0,
         "event_log": [],
     }
     try:
@@ -125,7 +121,12 @@ def save_used_codes(used_codes):
 
 
 def remaining_seconds(data):
-    return DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
+    return (
+        DAILY_LIMIT_SECONDS
+        + data["carryover_sec"]
+        + data["granted_sec"]
+        - data["time_spent_sec"]
+    )
 
 
 def write_remaining_time_file(remaining_sec):
@@ -312,7 +313,8 @@ def sync_with_server(data, datafile, now):
     status = remote_sync.DailyStatus(
         date=now.date().isoformat(),
         time_spent_sec=data["time_spent_sec"],
-        extra_time_sec=data["extra_time_sec"],
+        carryover_sec=data["carryover_sec"],
+        granted_sec=data["granted_sec"],
         remaining_sec=max(0, remaining_seconds(data)),
         last_tick=data["last_tick"],
     )
@@ -325,7 +327,7 @@ def sync_with_server(data, datafile, now):
     # The server keeps sending a grant until it hears the id back, so applying
     # first and recording afterwards can repeat a grant, never lose one.
     for grant in grants:
-        data["extra_time_sec"] += grant.seconds
+        data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
         send_message(message=f"extra time {grant.seconds}")
     if grants or already_applied:
@@ -342,7 +344,7 @@ def ensure_datafile(datafile, now):
     if CARRYOVER:
         carryover = compute_carryover_sec(now.date())
         if carryover > 0:
-            data["extra_time_sec"] = carryover
+            data["carryover_sec"] = carryover
             now_str = now.strftime(TIMESTAMP_FORMAT)
             data["event_log"].append(f"carryover {carryover} sec from previous day {now_str}")
     save_data(data, datafile)
@@ -409,14 +411,13 @@ def main():
                         save_used_codes(used_codes)
                         extra_time = redeem["extra_time_sec"]
                         data["event_log"].append(f"redeem code {extra_time} {now_str}")
-                        data["extra_time_sec"] += extra_time
+                        data["granted_sec"] += extra_time
                         send_message(message=f"extra time {extra_time}")
                         save_data(data, datafile)
 
                 sync_with_server(data, datafile, now)
 
-                limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
-                if data["time_spent_sec"] >= limit:
+                if remaining_seconds(data) <= 0:
                     # enforce first; bookkeeping below may fail without
                     # cancelling the shutdown
                     shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)

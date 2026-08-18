@@ -24,7 +24,8 @@ class DailyStatus:
 
     date: str
     time_spent_sec: int
-    extra_time_sec: int
+    carryover_sec: int
+    granted_sec: int
     remaining_sec: int
     last_tick: Optional[str]
 
