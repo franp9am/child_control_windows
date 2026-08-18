@@ -305,8 +305,10 @@ def sync_with_server(data, datafile, now):
     """Report today's totals to the parent's server and apply the grants it sends
     back. A server that is down, slow or unreachable simply leaves the local
     numbers untouched."""
+    if not SERVER_URL:
+        return
     token = remote_sync.load_device_token()
-    if not SERVER_URL or not token:
+    if not token:
         return
 
     now_str = now.strftime(TIMESTAMP_FORMAT)
