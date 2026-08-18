@@ -345,6 +345,22 @@ def ensure_datafile(datafile, now):
     return data
 
 
+def seconds_to_charge(data, now):
+    """Real seconds since the last tick when that gap looks like an ordinary
+    tick, otherwise the nominal interval. A tick is one sleep plus its own
+    overhead, so anything longer means the machine slept, rebooted or skipped
+    ticks -- and anything shorter means the clock moved backwards (DST); none
+    of that is time the child spent at the screen."""
+    try:
+        previous = datetime.datetime.strptime(data["last_tick"], "%Y-%m-%d %H:%M:%S")
+    except (KeyError, TypeError, ValueError):
+        return CHECK_INTERVAL_SECONDS  # no previous tick today
+    elapsed = int((now - previous).total_seconds())
+    if CHECK_INTERVAL_SECONDS <= elapsed <= 2 * CHECK_INTERVAL_SECONDS:
+        return elapsed
+    return CHECK_INTERVAL_SECONDS
+
+
 def main():
     # publish the remaining time immediately, before the startup delay, so a
     # stale value from yesterday isn't shown even for the first minute
@@ -405,7 +421,7 @@ def main():
                     save_data(data, datafile)
                     return
 
-                data["time_spent_sec"] += CHECK_INTERVAL_SECONDS
+                data["time_spent_sec"] += seconds_to_charge(data, now)
                 data["ticks"].append(now_str)
                 data["last_tick"] = now_str
                 save_data(data, datafile)
