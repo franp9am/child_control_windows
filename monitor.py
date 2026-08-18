@@ -22,22 +22,18 @@ from config import (
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
-    SECRET_HEX,
     SERVER_URL,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
     TARGET_USER,
     USED_CODES_FILE,
+    load_secret,
 )
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-try:
-    SECRET = bytes.fromhex(SECRET_HEX.strip())
-except Exception as e:  # placeholder or malformed hex -> run without a secret
-    print(f"Error loading secret: {e}")
-    SECRET = b""
+SECRET = load_secret()  # empty without a secret file: codes stop being accepted
 
 
 def get_datafile():

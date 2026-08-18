@@ -16,14 +16,15 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 For the common case there is now an installer that does every step below for you.
 
 1. Make sure the **child has a non-admin Windows account**.
-2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `SECRET_HEX` (the shared secret), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there and refuses to run while `SECRET_HEX` still holds the placeholder. Generate a secret with, e.g.:
+2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there. The shared secret is **not** in `config.py`, which is tracked in git: the installer asks for it and writes it into the locked data folder. Generate one with, e.g.:
    ```
    python -c "import secrets; print(secrets.token_hex(16))"
    ```
-   Use the **same** secret in the `config.py` on the parent's machine for `create_code.py`, and don't commit the real value to a public repo.
+   The parent's machine needs the **same** secret for `create_code.py`, either in its own `data/secret.txt` or in the `CHILD_SECRET` env var.
 3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
-   * copy `monitor.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects the secret in `config.py`),
+   * copy `monitor.py`, `remote_sync.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects `data\secret.txt`),
+   * ask for the shared secret and, optionally, the device token for the parent's server, and write both into the locked folder,
    * copy the overlay widget into `C:\ProgramData\ScreenTimeWidget` (child-readable; the widget is self-contained and gets the remaining-time file path as a task argument, so no config goes there),
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.
@@ -55,7 +56,8 @@ but I didn't test it.
   * `CARRYOVER` -- if `True`, unused time (including unused extra time from redeemed codes) rolls over to the next day; if `False`, each day starts fresh at `DAILY_LIMIT_SECONDS` and a redeemed code only grants extra time for the day it's redeemed
   * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
   * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
-  * `SECRET_HEX` -- the shared secret for signing extra-time codes; must match the parent's machine
+  * `SECRET_FILE` -- where the shared secret for signing extra-time codes is read from; the value must match the parent's machine
+  * `SERVER_URL` -- the parent's server for remote grants, empty to run without one; the device token goes in `DEVICE_TOKEN_FILE`
   * `REDEEM_FILE_PATH` -- path to a local file the children can access, to write a code in case you grant him extra time
   * `DATA_DIR` -- where the per-day json files and the used-code list live
 
@@ -92,7 +94,7 @@ A typical code can look like 2026-07-23:3600:a184 which would grant an extra hou
 The child writes this code to the file specified in monitor.py text document.
 
 To generate the codes, the parent can run the create_code.py script on his machine.
-Both machines share a secret password (`SECRET_HEX` in each machine's `config.py`) which should not be shared with the child.
+Both machines share a secret password (`data/secret.txt` on each machine, or the `CHILD_SECRET` env var on the parent's) which should not be shared with the child.
 
 
 ## Python dependencies

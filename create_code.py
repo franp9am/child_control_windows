@@ -8,19 +8,19 @@ import hashlib
 import hmac
 import os
 
-from config import SECRET_HEX, SIGNATURE_CHARS
+from config import SECRET_FILE, SIGNATURE_CHARS, load_secret
 
-# The secret must equal the one in config.py on the child's machine. The
-# CHILD_SECRET env var overrides config.py if set.
-sec = os.environ.get("CHILD_SECRET", SECRET_HEX)
+# The secret must equal the one on the child's machine. The CHILD_SECRET env var
+# overrides the secret file if set.
+env_secret = os.environ.get("CHILD_SECRET", "").strip()
 try:
-    secret = bytes.fromhex(sec.strip())
+    secret = bytes.fromhex(env_secret) if env_secret else load_secret()
 except ValueError:
     secret = b""
 if not secret:
     raise ValueError(
-        "Set SECRET_HEX in config.py (or the CHILD_SECRET env var) "
-        "to the shared secret used on the child's machine"
+        f"Write the shared secret (hex) to {SECRET_FILE}, or set the CHILD_SECRET "
+        "env var, using the same secret as the child's machine"
     )
 
 

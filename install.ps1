@@ -15,17 +15,34 @@ $configText = Get-Content -Raw "$src\config.py"
 $childUser = [regex]::Match($configText, 'TARGET_USER\s*=\s*["'']([^"'']+)').Groups[1].Value
 if (-not $childUser) { throw "Set TARGET_USER in config.py first." }
 
-# The shared secret also lives in config.py (protected later by the folder
-# ACL). Refuse to install while it is unset or too weak: at least 8 bytes,
-# i.e. 16 hex characters.
-$secretHex = [regex]::Match($configText, 'SECRET_HEX\s*=\s*["'']([^"'']*)').Groups[1].Value
-if ($secretHex -notmatch '^[0-9a-fA-F]{16,}$' -or $secretHex.Length % 2 -ne 0) {
-    throw "Set SECRET_HEX in config.py to the shared secret first: at least 8 bytes = 16 hex chars (generate with: python -c `"import secrets; print(secrets.token_hex(16))`")."
-}
-
 # The widget task needs the remaining-time file path as an argument.
 $remainingFile = [regex]::Match($configText, 'REMAINING_TIME_FILE_PATH\s*=\s*Path\(r?["'']([^"'']+)').Groups[1].Value
 if (-not $remainingFile) { throw "Could not read REMAINING_TIME_FILE_PATH from config.py." }
+
+# Both credentials live in files inside the locked data folder, never in
+# config.py, which is tracked in git. Ask for them before anything is installed;
+# they are written further down, once the folder ACL is in place.
+$secretFile = "$MonitorDir\data\secret.txt"
+$tokenFile  = "$MonitorDir\data\device_token.txt"
+
+$secretPrompt = "Shared secret for signing extra-time codes, at least 16 hex characters"
+if (Test-Path $secretFile) { $secretPrompt += " (Enter keeps the current one)" }
+$secretHex = (Read-Host $secretPrompt).Trim()
+if ($secretHex) {
+    if ($secretHex -notmatch '^[0-9a-fA-F]{16,}$' -or $secretHex.Length % 2 -ne 0) {
+        throw "The secret must be an even number of hex characters, at least 16 (generate with: python -c `"import secrets; print(secrets.token_hex(16))`")."
+    }
+} elseif (-not (Test-Path $secretFile)) {
+    throw "Without a secret monitor.py cannot verify extra-time codes. Run the installer again with one."
+}
+
+$tokenPrompt = "Device token from add_device.py on the parent's server"
+if (Test-Path $tokenFile) {
+    $tokenPrompt += " (Enter keeps the current one)"
+} else {
+    $tokenPrompt += " (Enter to run without server syncing)"
+}
+$deviceToken = (Read-Host $tokenPrompt).Trim()
 
 # Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
 # Must be a machine-wide install under Program Files, not whatever python.exe
@@ -47,11 +64,14 @@ if (-not $python) { throw "Could not find or install a machine-wide Python under
 $pythonw = Join-Path (Split-Path $python) pythonw.exe   # windowless twin, for the widget
 
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
-# That lock is what stops the child reading the secret in config.py and
-# forging codes.
+# That lock is what stops the child reading data\secret.txt and forging codes.
 New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
 Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+
+# Written only now, so neither credential ever sits in a folder the child can read.
+if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
+if ($deviceToken) { Set-Content -Path $tokenFile  -Value $deviceToken -Encoding ascii -NoNewline }
 
 # Widget folder: child-readable, holds only the overlay script. (Remove the
 # config.py copy older installs put here -- the widget no longer reads it.)
