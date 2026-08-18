@@ -6,12 +6,18 @@ Displays the remaining time information content from a text file.
 import ctypes
 import math
 import sys
+import time
 import tkinter as tk
+from pathlib import Path
 
 # Only used when no path is passed on the command line; must then match
 # REMAINING_TIME_FILE_PATH in monitor.py's config.py.
-DEFAULT_REMAINING_TIME_FILE = r"C:\Users\Public\remaining_time.txt"
-REMAINING_TIME_FILE_PATH = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE
+DEFAULT_REMAINING_TIME_FILE = r"C:\ProgramData\ScreenTimeWidget\remaining_time.txt"
+REMAINING_TIME_FILE_PATH = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE)
+
+# The monitor rewrites the file once per check interval (60 s); well past that
+# and it has died or been killed, so the number on screen means nothing.
+STALE_AFTER_SECONDS = 150
 
 # Display settings -- used by nothing but this widget.
 POLL_INTERVAL_MS = 5000
@@ -103,15 +109,21 @@ class RemainingTimeWidget:
             _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE,
         )
 
-    def compute_remaining(self):
+    def read_remaining_seconds(self):
+        """Seconds left, or None while the monitor isn't publishing them."""
         try:
-            with open(REMAINING_TIME_FILE_PATH, "r", encoding="utf-8") as f:
-                return int(f.read().strip())
+            age = time.time() - REMAINING_TIME_FILE_PATH.stat().st_mtime
+            remaining = int(REMAINING_TIME_FILE_PATH.read_text(encoding="utf-8").strip())
         except Exception:
             return None
+        # A stale zero still means the time is up: the monitor writes 0 and then
+        # exits to shut the machine down, so nothing refreshes the file after it.
+        if remaining > 0 and age > STALE_AFTER_SECONDS:
+            return None
+        return remaining
 
     def update_label(self):
-        remaining = self.compute_remaining()
+        remaining = self.read_remaining_seconds()
         if remaining is None:
             text = "Time: --"
             color = COLOR_NORMAL

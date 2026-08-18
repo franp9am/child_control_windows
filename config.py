@@ -2,9 +2,12 @@ from pathlib import Path
 
 TARGET_USER = "elias"  # as it shows up in `query user`
 
-# Reachable from the child's account; C:\Users\Public is readable by everyone.
+# The child writes redeem codes into this one, so it lives in their own profile.
 REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
-REMAINING_TIME_FILE_PATH = Path(r"C:\Users\Elias\Desktop\remaining_time.txt")
+
+# Published for remaining_time_widget.py. install.ps1 leaves this folder readable
+# by everyone but writable only by SYSTEM, so the child cannot fake the display.
+REMAINING_TIME_FILE_PATH = Path(r"C:\ProgramData\ScreenTimeWidget\remaining_time.txt")
 
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"

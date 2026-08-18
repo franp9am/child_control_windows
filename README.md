@@ -69,11 +69,12 @@ but I didn't test it.
 `remaining_time_widget.py` shows a small always-on-top "time left" box in the top-right corner of the child's screen. monitor.py publishes the seconds remaining today to `REMAINING_TIME_FILE_PATH` on every tick; the widget only reads that one file and is fully self-contained -- it never touches `config.py` or the locked monitor folder.
 
 Setup, run under the **child's own account** (not SYSTEM):
-* Nothing extra to grant — `C:\Users\Public\` is readable by all local accounts by default, same as the redeem file already relies on.
+* Nothing extra to grant — the file lives in `C:\ProgramData\ScreenTimeWidget\` next to the widget script, which the installer leaves readable by all local accounts. Only SYSTEM (i.e. monitor.py) can write there, so the child can read the number but not fake it.
+* The widget shows `Time: --` if the file stops being refreshed for more than `STALE_AFTER_SECONDS`, rather than leaving a dead value on screen. A stale `0` is kept as "Time's up", since monitor.py writes it and then exits to shut the machine down.
 * The widget takes the remaining-time file path as its first command-line argument (the installer fills it in from config.py's `REMAINING_TIME_FILE_PATH`); without an argument it falls back to the default at the top of the script. Colours, font and poll interval are in the same block.
 * Put a shortcut to it in the child's Startup folder (`shell:startup`), targeting `pythonw.exe` (not `python.exe`, so no console window appears), e.g.
 ```
-C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py C:\Users\Public\remaining_time.txt
+C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py C:\ProgramData\ScreenTimeWidget\remaining_time.txt
 ```
 * The child can close the widget window with Alt+F4 if they want; this is just a visual reminder, the actual enforcement is done by monitor.py.
 

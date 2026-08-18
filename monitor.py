@@ -121,6 +121,10 @@ def save_used_codes(used_codes):
     os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
 
 
+def remaining_seconds(data):
+    return DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
+
+
 def write_remaining_time_file(remaining_sec):
     """Publish remaining seconds to a child-readable file for a UI to display."""
     target = REMAINING_TIME_FILE_PATH
@@ -305,9 +309,7 @@ def sync_with_server(data, datafile, now_str):
         date=datetime.date.today().isoformat(),
         time_spent_sec=data["time_spent_sec"],
         extra_time_sec=data["extra_time_sec"],
-        remaining_sec=max(
-            0, DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
-        ),
+        remaining_sec=max(0, remaining_seconds(data)),
         last_tick=data["last_tick"],
     )
     already_applied = remote_sync.load_applied_grant_ids()
@@ -348,7 +350,7 @@ def main():
     # stale value from yesterday isn't shown even for the first minute
     try:
         data = ensure_datafile(get_datafile(), datetime.datetime.now())
-        write_remaining_time_file(DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"])
+        write_remaining_time_file(remaining_seconds(data))
     except Exception:
         log_unexpected_error()
 
@@ -407,11 +409,11 @@ def main():
                 data["ticks"].append(now_str)
                 data["last_tick"] = now_str
                 save_data(data, datafile)
-                remaining = limit - data["time_spent_sec"]
-                write_remaining_time_file(remaining)
+                write_remaining_time_file(remaining_seconds(data))
             else:
-                # not logged in, nothing to report
-                pass
+                # Nothing is being spent, but keep publishing: the widget treats
+                # a file that stops being refreshed as "the monitor is gone".
+                write_remaining_time_file(remaining_seconds(data))
         except Exception:
             log_unexpected_error()
 
