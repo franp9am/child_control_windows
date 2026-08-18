@@ -9,6 +9,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
+import remote_sync
 from config import (
     CARRYOVER,
     CHECK_INTERVAL_SECONDS,
@@ -23,6 +24,7 @@ from config import (
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
     SECRET_HEX,
+    SERVER_URL,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
@@ -303,6 +305,40 @@ def handle_redeem_file():
     }
 
 
+def sync_with_server(data, datafile, now_str):
+    """Report today's totals to the parent's server and apply the grants it sends
+    back. A server that is down, slow or unreachable simply leaves the local
+    numbers untouched."""
+    token = remote_sync.load_device_token()
+    if not SERVER_URL or not token:
+        return
+
+    status = remote_sync.DailyStatus(
+        date=datetime.date.today().isoformat(),
+        time_spent_sec=data["time_spent_sec"],
+        extra_time_sec=data["extra_time_sec"],
+        remaining_sec=max(
+            0, DAILY_LIMIT_SECONDS + data["extra_time_sec"] - data["time_spent_sec"]
+        ),
+        last_tick=data["last_tick"],
+    )
+    already_applied = remote_sync.load_applied_grant_ids()
+    try:
+        grants = remote_sync.request_pending_grants(status, already_applied, token)
+    except Exception:
+        return  # offline is the normal case, not a crash
+
+    # The server keeps sending a grant until it hears the id back, so applying
+    # first and recording afterwards can repeat a grant, never lose one.
+    for grant in grants:
+        data["extra_time_sec"] += grant.seconds
+        data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
+        send_message(message=f"extra time {grant.seconds}")
+    if grants or already_applied:
+        save_data(data, datafile)
+        remote_sync.save_applied_grant_ids([grant.id for grant in grants])
+
+
 def ensure_datafile(datafile, now):
     """Create today's datafile if it doesn't exist yet, applying carryover if
     configured; otherwise just load what's already there."""
@@ -365,6 +401,8 @@ def main():
                         data["extra_time_sec"] += extra_time
                         send_message(message=f"extra time {extra_time}")
                         save_data(data, datafile)
+
+                sync_with_server(data, datafile, now_str)
 
                 limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
                 if data["time_spent_sec"] >= limit:

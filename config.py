@@ -15,6 +15,14 @@ DATA_DIR = Path(__file__).parent / "data"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
 CRASH_LOG_FILE = DATA_DIR / "crash.log"
 
+# Parent's server, e.g. "https://screentime.example.com". Empty disables all
+# remote syncing; the machine then runs purely on the local limit and the
+# signed redeem codes.
+SERVER_URL = ""
+DEVICE_TOKEN_FILE = DATA_DIR / "device_token.txt"  # from add_device.py on the server
+APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
+SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
+
 CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
 # and redeemed codes only count for the day they're redeemed on.
 

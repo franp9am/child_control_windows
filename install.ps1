@@ -50,7 +50,7 @@ $pythonw = Join-Path (Split-Path $python) pythonw.exe   # windowless twin, for t
 # That lock is what stops the child reading the secret in config.py and
 # forging codes.
 New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
-Copy-Item "$src\monitor.py", "$src\config.py" $MonitorDir -Force
+Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
 
 # Widget folder: child-readable, holds only the overlay script. (Remove the
