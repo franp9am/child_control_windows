@@ -35,9 +35,11 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SECRET = load_secret()  # empty without a secret file: codes stop being accepted
 
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"  # shared by every stamp written and read
 
-def get_datafile():
-    return DATA_DIR / (datetime.date.today().isoformat() + ".json")
+
+def get_datafile(now):
+    return DATA_DIR / (now.date().isoformat() + ".json")
 
 
 def find_previous_datafile(today: datetime.date) -> Optional[Path]:
@@ -73,9 +75,8 @@ def compute_carryover_sec(today: datetime.date) -> int:
     return leftover + missing_days * DAILY_LIMIT_SECONDS
 
 
-def is_night_time():
-    hour = datetime.datetime.now().hour
-    return not (EARLIEST_HOUR_INCLUDED <= hour <= LATEST_HOUR_INCLUDED)
+def is_night_time(now):
+    return not (EARLIEST_HOUR_INCLUDED <= now.hour <= LATEST_HOUR_INCLUDED)
 
 
 def load_data(datafile):
@@ -140,7 +141,7 @@ def write_remaining_time_file(remaining_sec):
 def log_unexpected_error():
     """Append the current traceback to the crash log; never raise itself."""
     try:
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_str = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
         with open(CRASH_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"--- {now_str} ---\n{traceback.format_exc()}\n")
     except Exception:
@@ -297,7 +298,7 @@ def handle_redeem_file():
     }
 
 
-def sync_with_server(data, datafile, now_str):
+def sync_with_server(data, datafile, now):
     """Report today's totals to the parent's server and apply the grants it sends
     back. A server that is down, slow or unreachable simply leaves the local
     numbers untouched."""
@@ -305,8 +306,9 @@ def sync_with_server(data, datafile, now_str):
     if not SERVER_URL or not token:
         return
 
+    now_str = now.strftime(TIMESTAMP_FORMAT)
     status = remote_sync.DailyStatus(
-        date=datetime.date.today().isoformat(),
+        date=now.date().isoformat(),
         time_spent_sec=data["time_spent_sec"],
         extra_time_sec=data["extra_time_sec"],
         remaining_sec=max(0, remaining_seconds(data)),
@@ -339,7 +341,7 @@ def ensure_datafile(datafile, now):
         carryover = compute_carryover_sec(now.date())
         if carryover > 0:
             data["extra_time_sec"] = carryover
-            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            now_str = now.strftime(TIMESTAMP_FORMAT)
             data["event_log"].append(f"carryover {carryover} sec from previous day {now_str}")
     save_data(data, datafile)
     return data
@@ -352,7 +354,7 @@ def seconds_to_charge(data, now):
     ticks -- and anything shorter means the clock moved backwards (DST); none
     of that is time the child spent at the screen."""
     try:
-        previous = datetime.datetime.strptime(data["last_tick"], "%Y-%m-%d %H:%M:%S")
+        previous = datetime.datetime.strptime(data["last_tick"], TIMESTAMP_FORMAT)
     except (KeyError, TypeError, ValueError):
         return CHECK_INTERVAL_SECONDS  # no previous tick today
     elapsed = int((now - previous).total_seconds())
@@ -365,7 +367,8 @@ def main():
     # publish the remaining time immediately, before the startup delay, so a
     # stale value from yesterday isn't shown even for the first minute
     try:
-        data = ensure_datafile(get_datafile(), datetime.datetime.now())
+        now = datetime.datetime.now()
+        data = ensure_datafile(get_datafile(now), now)
         write_remaining_time_file(remaining_seconds(data))
     except Exception:
         log_unexpected_error()
@@ -378,14 +381,14 @@ def main():
         # and try again, instead of leaving the machine unrestricted.
         try:
             now = datetime.datetime.now()
-            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-            datafile = get_datafile()
+            now_str = now.strftime(TIMESTAMP_FORMAT)
+            datafile = get_datafile(now)
             data = ensure_datafile(datafile, now)
 
             is_logged_in = user_logged_in()
 
             if is_logged_in:
-                if is_night_time():
+                if is_night_time(now):
                     # enforce first; bookkeeping below may fail without
                     # cancelling the shutdown
                     shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
@@ -408,7 +411,7 @@ def main():
                         send_message(message=f"extra time {extra_time}")
                         save_data(data, datafile)
 
-                sync_with_server(data, datafile, now_str)
+                sync_with_server(data, datafile, now)
 
                 limit = DAILY_LIMIT_SECONDS + data["extra_time_sec"]
                 if data["time_spent_sec"] >= limit:
