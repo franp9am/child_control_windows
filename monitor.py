@@ -18,6 +18,7 @@ from config import (
     DATA_DIR,
     EARLIEST_HOUR_INCLUDED,
     LATEST_HOUR_INCLUDED,
+    MAX_CARRYOVER_SECONDS,
     MAX_REDEEM_FILE_BYTES,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     REDEEM_FILE_PATH,
@@ -59,7 +60,8 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
 
 def compute_carryover_sec(today: datetime.date) -> int:
     """Leftover time from the last day with data, plus a full daily limit for
-    every calendar day in between that has no data file (machine was off)."""
+    every calendar day in between that has no data file (machine was off),
+    capped at MAX_CARRYOVER_SECONDS."""
     prev_file = find_previous_datafile(today)
     if prev_file is None:
         return 0
@@ -72,7 +74,7 @@ def compute_carryover_sec(today: datetime.date) -> int:
         - prev_data.get("time_spent_sec", 0),
     )
     missing_days = (today - prev_date).days - 1  # fully skipped days, no file
-    return leftover + missing_days * DAILY_LIMIT_SECONDS
+    return min(leftover + missing_days * DAILY_LIMIT_SECONDS, MAX_CARRYOVER_SECONDS)
 
 
 def is_night_time(now):

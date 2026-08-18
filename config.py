@@ -32,6 +32,9 @@ CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
 # and redeemed codes only count for the day they're redeemed on.
 
 DAILY_LIMIT_SECONDS = 60 * 60
+# Ceiling on what a fresh day can inherit, so a machine left off for a fortnight
+# doesn't hand over a fortnight's worth of screen time.
+MAX_CARRYOVER_SECONDS = 5 * 60 * 60  # at most 5 hours to carry over
 CHECK_INTERVAL_SECONDS = 60
 SHUTDOWN_DELAY_SECONDS = 300  # grace period once the time is up
 NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
