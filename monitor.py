@@ -17,7 +17,6 @@ from config import (
     DAILY_LIMIT_SECONDS,
     DATA_DIR,
     EARLIEST_HOUR_INCLUDED,
-    EXACT_DATE_CHECK,
     LATEST_HOUR_INCLUDED,
     MAX_REDEEM_FILE_BYTES,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
@@ -276,20 +275,13 @@ def handle_redeem_file():
         }
 
     req_sig = parts[2]
-    # The date is a signed nonce that keeps otherwise-identical codes distinct.
-    # It's only checked against the real calendar if EXACT_DATE_CHECK is set.
+    # The date is a signed nonce that keeps otherwise-identical codes distinct;
+    # it is not checked against the calendar, so a code has no expiry date.
     extracted_payload = f"{req_date}:{req_extra_time}".encode()
 
     if not verify(extracted_payload, req_sig):
         return {
             "status": "invalid signature",
-            "redeem_code": redeem_content,
-            "extra_time_sec": 0,
-        }
-
-    if EXACT_DATE_CHECK and req_date != datetime.date.today().isoformat():
-        return {
-            "status": "date mismatch",
             "redeem_code": redeem_content,
             "extra_time_sec": 0,
         }

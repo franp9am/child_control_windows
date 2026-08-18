@@ -53,7 +53,6 @@ but I didn't test it.
   * `TARGET_USER` -- child's windows account
   * `DAILY_LIMIT_SECONDS` -- how many seconds per day is the maximal screentime
   * `CARRYOVER` -- if `True`, unused time (including unused extra time from redeemed codes) rolls over to the next day; if `False`, each day starts fresh at `DAILY_LIMIT_SECONDS` and a redeemed code only grants extra time for the day it's redeemed
-  * `EXACT_DATE_CHECK` -- if `True`, a code's embedded date must match the real, current calendar date or it's rejected; if `False` (default) the date is just a nonce and codes can be redeemed any day
   * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
   * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
   * `SECRET_HEX` -- the shared secret for signing extra-time codes; must match the parent's machine
@@ -84,10 +83,11 @@ Encrypt the hard-drive by bitlocker to prevent the child physically taking out t
 
 ## Extra time request
 
-If you want to grant extra time to the child, you generate a code that looks like this `<extra_time_seconds>:<signature>` where
+If you want to grant extra time to the child, you generate a code that looks like this `<date>:<extra_time_seconds>:<signature>` where
+* date is a nonce, normally today, that keeps otherwise-identical codes distinct
 * extra time is an integer
 * signature is 4 or more characters
-A typical code can look like 3600:a184 which would grant an extra hour (3600 seconds). Codes are not tied to a date (unless `EXACT_DATE_CHECK` is enabled, in which case a code is only valid on the day it was generated for); each code can only be redeemed once, tracked in `data/used_redeem_codes.json`.
+A typical code can look like 2026-07-23:3600:a184 which would grant an extra hour (3600 seconds). Codes are not tied to a date -- the date is never checked against the calendar, so a code can be redeemed any day. Each code can only be redeemed once, tracked in `data/used_redeem_codes.json`; to issue a second code of the same amount on the same day, pass a different `--date`.
 
 The child writes this code to the file specified in monitor.py text document.
 

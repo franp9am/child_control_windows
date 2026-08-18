@@ -26,9 +26,6 @@ SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
 # and redeemed codes only count for the day they're redeemed on.
 
-EXACT_DATE_CHECK = False  # if True, a code's embedded date must match today's
-# real calendar date, or it's rejected as invalid.
-
 DAILY_LIMIT_SECONDS = 60 * 60
 CHECK_INTERVAL_SECONDS = 60
 SHUTDOWN_DELAY_SECONDS = 300  # grace period once the time is up
