@@ -164,7 +164,7 @@ def health() -> dict[str, str]:
 @app.get("/")
 def index(request: Request, device_id: int | None = None) -> HTMLResponse:
     connection = db.connect()
-    devices = connection.execute("SELECT id, name FROM devices ORDER BY name").fetchall()
+    devices = connection.execute("SELECT id, name FROM devices ORDER BY id").fetchall()
     selected_device = next(
         (device for device in devices if device["id"] == device_id),
         devices[0] if devices else None,
