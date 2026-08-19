@@ -101,3 +101,31 @@ Both machines share a secret password (`data/secret.txt` on each machine, or the
 ## Python dependencies
 
 None!
+
+## Use cases: what happens when...
+
+Scenario by scenario, as the code behaves today. Times assume the default config (1 h daily limit, 5 h carryover cap, 60 s check interval).
+
+### Daily limit and carryover
+
+* **Child uses up the daily limit.** Shutdown is issued with a 300 s grace period, the monitor reports the final state to the server and exits. Known gap: each reboot afterwards buys roughly 6 uncharged minutes (60 s startup delay + 300 s grace) before the next shutdown, repeatable.
+* **Child stops before the limit.** The unused remainder rolls over to the next day (if `CARRYOVER` is on), capped at 5 h total.
+* **Machine stays off for a whole day.** Each fully skipped day banks one full daily limit, same 5 h cap. A day the machine was on, even briefly, banks only what was actually left.
+* **Child is past the limit at midnight (e.g. after a negative grant).** The debt is forgiven: carryover is never negative, the new day starts with the full daily limit.
+* **Child uses the machine outside allowed hours.** Shutdown with a 10 s grace, whatever time is remaining.
+
+### Redeem codes
+
+* **Child enters a valid code.** The time is added the same minute, once ever -- the code lands in `used_redeem_codes.json` and never works again, on any day.
+* **Unused code time at midnight.** It is part of the day's remainder, so it carries over like any other unused time (same cap).
+
+### Server grants
+
+* **Parent grants time while the machine is on.** Applied within about a minute; the child sees a message.
+* **Parent grants time while the machine is off.** The grant waits on the server indefinitely and is applied on whatever day the machine next syncs -- there is no expiry. A forgotten negative grant is therefore a delayed punishment for some future day.
+* **Parent grants negative time.** It reduces today's remaining time; if that drops to zero or below, the machine shuts down on the next tick. The effect never outlives the day (see midnight forgiveness above), so a negative grant cannot ban more than the rest of today.
+* **Parent grants -X, then corrects with +X before the -X was synced.** Both arrive in the same sync and cancel exactly. Pending (not yet synced) grants are visible on the parent page, so this case is recognizable there.
+* **Parent grants -X, machine shuts down, parent corrects with +X the same day.** The final sync before shutdown acknowledged the -X; after a reboot the +X restores exactly what the -X took. Correct, at the cost of one reboot.
+* **Parent grants -X, corrects with +X, but a midnight lies in between.** The -X evaporates at midnight (never carried), while the +X still applies in full -- the child ends up ahead by nearly the whole +X. To undo an already-applied punishment across days, grant back only what the child actually lost.
+* **A grant arrives during the very last sync before shutdown.** It is applied and saved, but the shutdown already in progress is not cancelled; the time counts from the next boot.
+* **Server is down or unreachable.** The local limit, codes and shutdowns all keep working; grants queue on the server and apply on the next successful sync. A grant is re-sent until the machine confirms it, so a grant can in rare crash timings be applied twice, but never lost.
