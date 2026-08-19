@@ -402,6 +402,7 @@ def main():
                     send_message(message="Night time")
                     data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
+                    sync_with_server(data, datafile, now)
                     return
 
                 redeem = handle_redeem_file()
@@ -427,6 +428,10 @@ def main():
                     send_message(message="time up")
                     data["event_log"].append(f"time up {now_str}")
                     save_data(data, datafile)
+                    # last word before the process exits: without it the page
+                    # keeps yesterday's numbers and the grant that caused this
+                    # shutdown stays pending until the next boot
+                    sync_with_server(data, datafile, now)
                     return
 
                 data["time_spent_sec"] += seconds_to_charge(data, now)
