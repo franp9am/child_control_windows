@@ -134,5 +134,10 @@
     <p class="empty">No devices registered yet. Add one with <code>add_device.py</code>.</p>
     {% endif %}
   </div>
+  <script>
+    setInterval(() => {
+      if (!document.querySelector("input:focus")) location.reload();
+    }, 60000);
+  </script>
 </body>
 </html>
