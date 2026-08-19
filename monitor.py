@@ -317,7 +317,7 @@ def sync_with_server(data, datafile, now):
         time_spent_sec=data["time_spent_sec"],
         carryover_sec=data["carryover_sec"],
         granted_sec=data["granted_sec"],
-        remaining_sec=max(0, remaining_seconds(data)),
+        remaining_sec=remaining_seconds(data),
         last_tick=data["last_tick"],
     )
     already_applied = remote_sync.load_applied_grant_ids()

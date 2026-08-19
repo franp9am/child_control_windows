@@ -53,12 +53,12 @@ def formatted_local_time(utc_timestamp: str) -> str:
 
 
 def duration_in_words(seconds: int) -> str:
-    if seconds <= 0:
+    """Negative means the child is past the limit, e.g. after a negative grant."""
+    hours, minutes = divmod(abs(seconds) // 60, 60)
+    if hours == 0 and minutes == 0:
         return "no time left"
-    hours, minutes = divmod(seconds // 60, 60)
-    if hours:
-        return f"{hours} h {minutes} min"
-    return f"{minutes} min"
+    magnitude = f"{hours} h {minutes} min" if hours else f"{minutes} min"
+    return magnitude if seconds > 0 else f"{magnitude} over"
 
 
 def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | None:
