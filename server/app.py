@@ -2,6 +2,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,6 +10,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import db
+
+# The page is read by the family, not by whoever happens to host it, so the
+# rendered times must not depend on the server process's own timezone.
+DISPLAY_TIMEZONE = ZoneInfo("Europe/Prague")
 
 
 class SyncRequest(BaseModel):
@@ -43,7 +48,8 @@ class LastSeenView:
 
 
 def formatted_local_time(utc_timestamp: str) -> str:
-    return datetime.fromisoformat(utc_timestamp).astimezone().strftime("%Y-%m-%d %H:%M")
+    local = datetime.fromisoformat(utc_timestamp).astimezone(DISPLAY_TIMEZONE)
+    return local.strftime("%Y-%m-%d %H:%M")
 
 
 def duration_in_words(seconds: int) -> str:
