@@ -63,11 +63,26 @@
   .status td { text-align: right; }
   .status tr:last-child th, .status tr:last-child td { border-bottom: none; }
   .never { margin: 0; font-size: .9rem; color: #888; }
-  .overview button {
-    width: 100%; padding: .6rem 1.2rem; border-radius: 6px; cursor: not-allowed;
-    background: #fff; color: #999; border: 1px dashed #ccc;
-    font-size: .9rem; font-family: inherit;
+  .week h2 { display: flex; align-items: baseline; }
+  .week .total { margin-left: auto; font-weight: 400; color: #888; font-size: .85rem; }
+  .chart { display: flex; align-items: stretch; gap: .35rem; height: 8rem; }
+  .day { flex: 1; display: flex; flex-direction: column; align-items: center; }
+  .day .spent { font-size: .7rem; color: #999; padding-bottom: .2rem; }
+  .day .track {
+    flex: 1; width: 100%; display: flex; align-items: flex-end;
+    background: #f2f2f2; border-radius: 4px;
   }
+  .day .bar { width: 100%; min-height: 2px; border-radius: 4px; background: #b9b9b9; }
+  .day .weekday { font-size: .75rem; color: #888; padding-top: .35rem; }
+  .day.today .bar { background: #1a1a1a; }
+  .day.today .weekday, .day.today .spent { color: #1a1a1a; font-weight: 600; }
+  .export { display: flex; gap: .5rem; }
+  .export a {
+    flex: 1; padding: .55rem .6rem; border-radius: 6px; text-align: center;
+    text-decoration: none; border: 1px solid #ccc; background: #fff; color: #444;
+    font-size: .85rem;
+  }
+  .export a:hover { background: #f2f2f2; border-color: #999; color: #1a1a1a; }
   .empty { color: #888; font-size: .9rem; }
 </style>
 </head>
@@ -126,8 +141,31 @@
         {% endif %}
       </div>
 
-      <div class="section overview">
-        <button type="button" disabled>Show screentime</button>
+      <div class="section week">
+        <h2>Screen time this week
+          <span class="total">{{ week.total }} in total</span>
+        </h2>
+        <div class="chart">
+          {% for day in week.days %}
+          <div class="day {% if day.is_today %}today{% endif %}">
+            <span class="spent">{{ day.spent }}</span>
+            <div class="track">
+              {% if day.bar_percent %}
+              <div class="bar" style="height: {{ day.bar_percent }}%"></div>
+              {% endif %}
+            </div>
+            <span class="weekday">{{ day.weekday }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Export</h2>
+        <div class="export">
+          <a href="{{ url_for('export_grants').include_query_params(device_id=selected_device.id) }}">All grants (CSV)</a>
+          <a href="{{ url_for('export_screen_time').include_query_params(device_id=selected_device.id) }}">All screen time (CSV)</a>
+        </div>
       </div>
     </div>
     {% else %}

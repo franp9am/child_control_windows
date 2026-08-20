@@ -1,11 +1,14 @@
+import csv
+import io
+import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -47,6 +50,20 @@ class LastSeenView:
     remaining: str
 
 
+@dataclass
+class DayUsage:
+    weekday: str
+    spent: str
+    bar_percent: int
+    is_today: bool
+
+
+@dataclass
+class WeekUsage:
+    days: list[DayUsage]
+    total: str
+
+
 def formatted_local_time(utc_timestamp: str) -> str:
     local = datetime.fromisoformat(utc_timestamp).astimezone(DISPLAY_TIMEZONE)
     return local.strftime("%Y-%m-%d %H:%M")
@@ -59,6 +76,49 @@ def duration_in_words(seconds: int) -> str:
         return "no time left"
     magnitude = f"{hours} h {minutes} min" if hours else f"{minutes} min"
     return magnitude if seconds > 0 else f"{magnitude} over"
+
+
+def compact_duration(seconds: int) -> str:
+    hours, minutes = divmod(seconds // 60, 60)
+    if seconds <= 0:
+        return "0"
+    if hours == 0:
+        return f"{minutes}m"
+    return f"{hours}h{minutes:02d}"
+
+
+def percent_of_tallest(seconds: int, tallest: int) -> int:
+    """Any use at all gets at least a sliver, so a short day is not an empty column."""
+    if seconds == 0:
+        return 0
+    return max(round(100 * seconds / tallest), 1)
+
+
+def last_week(connection: sqlite3.Connection, device_id: int) -> WeekUsage:
+    """Time spent on each of the last seven days, oldest first; missing days count as zero."""
+    today = datetime.now(DISPLAY_TIMEZONE).date()
+    days = [today - timedelta(days=offset) for offset in reversed(range(7))]
+    rows = connection.execute(
+        """SELECT date, time_spent_sec FROM status
+           WHERE device_id = :device_id AND date >= :first_day""",
+        {"device_id": device_id, "first_day": days[0].isoformat()},
+    ).fetchall()
+    spent_on = {row["date"]: row["time_spent_sec"] for row in rows}
+    seconds_per_day = [max(spent_on.get(day.isoformat(), 0), 0) for day in days]
+    # An hour is the shortest scale, so a quiet week doesn't look like a busy one.
+    tallest = max(max(seconds_per_day), 3600)
+    return WeekUsage(
+        days=[
+            DayUsage(
+                weekday=day.strftime("%a"),
+                spent=compact_duration(seconds),
+                bar_percent=percent_of_tallest(seconds, tallest),
+                is_today=day == today,
+            )
+            for day, seconds in zip(days, seconds_per_day)
+        ],
+        total=compact_duration(sum(seconds_per_day)),
+    )
 
 
 def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | None:
@@ -91,6 +151,32 @@ def pending_grants(connection: sqlite3.Connection, device_id: int) -> list[Grant
         )
         for row in rows
     ]
+
+
+def csv_download(filename: str, header: list[str], rows: list[list]) -> Response:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def export_filename(device_name: str, table: str) -> str:
+    """Device names are free text, so keep only what is safe in a header and a filename."""
+    return f"{re.sub(r'[^A-Za-z0-9]+', '-', device_name).strip('-') or 'device'}-{table}.csv"
+
+
+def device_name_or_404(connection: sqlite3.Connection, device_id: int) -> str:
+    device = connection.execute(
+        "SELECT name FROM devices WHERE id = :device_id", {"device_id": device_id}
+    ).fetchone()
+    if device is None:
+        raise HTTPException(status_code=404, detail="unknown device")
+    return device["name"]
 
 
 db.create_schema()
@@ -179,10 +265,11 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
         devices[0] if devices else None,
     )
     if selected_device is None:
-        waiting, status = [], None
+        waiting, status, week = [], None, None
     else:
         waiting = pending_grants(connection, selected_device["id"])
         status = last_seen(connection, selected_device["id"])
+        week = last_week(connection, selected_device["id"])
     connection.close()
     return templates.TemplateResponse(
         request,
@@ -192,6 +279,7 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
             "selected_device": selected_device,
             "pending_grants": waiting,
             "last_seen": status,
+            "week": week,
         },
     )
 
@@ -219,3 +307,74 @@ async def create_grant(request: Request) -> RedirectResponse:
         connection.close()
     target = request.url_for("index").include_query_params(device_id=device_id)
     return RedirectResponse(str(target), status_code=303)
+
+
+@app.get("/export/grants")
+def export_grants(device_id: int) -> Response:
+    connection = db.connect()
+    try:
+        device_name = device_name_or_404(connection, device_id)
+        rows = connection.execute(
+            """SELECT id, seconds, created_at, acked_at FROM grants
+               WHERE device_id = :device_id
+               ORDER BY id""",
+            {"device_id": device_id},
+        ).fetchall()
+    finally:
+        connection.close()
+    zone = DISPLAY_TIMEZONE.key
+    return csv_download(
+        filename=export_filename(device_name, "grants"),
+        header=["id", "minutes", f"created ({zone})", f"applied ({zone})"],
+        rows=[
+            [
+                row["id"],
+                row["seconds"] // 60,
+                formatted_local_time(row["created_at"]),
+                formatted_local_time(row["acked_at"]) if row["acked_at"] else "",
+            ]
+            for row in rows
+        ],
+    )
+
+
+@app.get("/export/screen-time")
+def export_screen_time(device_id: int) -> Response:
+    connection = db.connect()
+    try:
+        device_name = device_name_or_404(connection, device_id)
+        rows = connection.execute(
+            """SELECT date, time_spent_sec, carryover_sec, granted_sec, remaining_sec,
+                      last_tick, updated_at
+               FROM status
+               WHERE device_id = :device_id
+               ORDER BY date""",
+            {"device_id": device_id},
+        ).fetchall()
+    finally:
+        connection.close()
+    zone = DISPLAY_TIMEZONE.key
+    return csv_download(
+        filename=export_filename(device_name, "screen-time"),
+        header=[
+            "date",
+            "time_spent_sec",
+            "carryover_sec",
+            "granted_sec",
+            "remaining_sec",
+            "last_tick (device clock)",
+            f"synced ({zone})",
+        ],
+        rows=[
+            [
+                row["date"],
+                row["time_spent_sec"],
+                row["carryover_sec"],
+                row["granted_sec"],
+                row["remaining_sec"],
+                row["last_tick"] or "",
+                formatted_local_time(row["updated_at"]),
+            ]
+            for row in rows
+        ],
+    )
