@@ -37,6 +37,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 SECRET = load_secret()  # empty without a secret file: codes stop being accepted
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"  # shared by every stamp written and read
+TICK_TIME_FORMAT = "%H:%M:%S"  # ticks live in a per-date file, so no date needed
 
 
 def get_datafile(now):
@@ -435,7 +436,7 @@ def main():
                     return
 
                 data["time_spent_sec"] += seconds_to_charge(data, now)
-                data["ticks"].append(now_str)
+                data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
                 data["last_tick"] = now_str
                 save_data(data, datafile)
                 write_remaining_time_file(remaining_seconds(data))
