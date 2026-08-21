@@ -115,6 +115,62 @@ page shows. The header is set from `$remote_user` inside the authenticated locat
 blanked on `/api/` and `/health`, so a client cannot supply its own. The app must never be
 reachable except through the proxy, so start uvicorn on `--host 127.0.0.1` (the default).
 
+## Signing out
+
+Basic auth has no sign-out, only a password the browser keeps re-sending, so the link in
+the page header replaces it with a throwaway one. That only works if the throwaway is
+*accepted* somewhere, which is what `/logout` is for:
+
+```nginx
+# htpasswd -bc /etc/nginx/htpasswd.logout logout logout
+location = /logout {
+    auth_basic "Restricted";                    # the same realm string as /
+    auth_basic_user_file /etc/nginx/htpasswd.logout;
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header X-Remote-User $remote_user;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+It goes in the same `server` block as `location /`, and `= /logout` beats the prefix match,
+so the throwaway file is consulted for that one path and the real htpasswd for everything
+else. Without this block `/logout` falls into `location /`, the throwaway password is
+rejected by the real htpasswd, and the browser is left prompting on a URL that still
+carries it -- the exact loop the redirect exists to avoid, just parked one path further on.
+
+The link points at `https://logout:logout@<host>/logout`, nginx accepts that pair against
+the file above, the browser files it under the realm in place of the parent's real
+password, and the app answers with a redirect to `/`, spelled out in full as
+`https://<host>/`. That is where the 401 happens, on a URL with no credentials in it, so
+the login box it opens can be answered normally. The full spelling is the point: a bare
+`/` would be resolved against the URL the browser is on, and a resolved relative reference
+inherits that URL's userinfo, quietly putting the bogus credentials back on the page that
+must not have them.
+
+Three things this depends on:
+
+* **The realm string must be identical in both locations** -- `Restricted` as deployed,
+  whatever `location /` says if that changes. Browsers cache passwords per origin *and*
+  realm; under a different realm the throwaway would be filed alongside the real password
+  rather than over it, and the parent would stay logged in.
+* **The redirect has to come from the app, not from `return 302` in the location.**
+  nginx runs `return` in the rewrite phase, before `auth_basic` in the access phase, so a
+  redirect written there answers without ever checking the password -- and a password
+  never checked is never cached, which is the whole point.
+* **Never give a parent the login `logout`.** `add_user.py` would let you, and that
+  account's password would then be public knowledge.
+
+The app refuses to serve `/logout` unless nginx hands it `X-Remote-User: logout`, so a
+missing or unprotected location block fails with a visible 403 instead of a sign-out link
+that quietly does nothing.
+
+Firefox shows a "you are about to log in with the username logout" confirmation before
+following the link; that is its anti-phishing warning about credentials in a URL, and
+answering yes is correct here.
+
 ## Python dependencies
 
 None!

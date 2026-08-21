@@ -18,6 +18,10 @@ import db
 # rendered times must not depend on the server process's own timezone.
 DISPLAY_TIMEZONE = ZoneInfo("Europe/Prague")
 
+# The account that exists only to be the wrong password, in nginx's htpasswd for
+# /logout and nowhere else. No parent may use this login.
+LOGOUT_LOGIN = "logout"
+
 
 class SyncRequest(BaseModel):
     date: str
@@ -324,8 +328,41 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
             "pending_grants": waiting,
             "last_seen": status,
             "week": week,
+            "logout_login": LOGOUT_LOGIN,
         },
     )
+
+
+@app.get("/logout")
+def logout(request: Request) -> RedirectResponse:
+    """Signs the parent out by handing the browser a useless password.
+
+    The logout/logout account is real on the /logout endpoint:
+    nginx checks this one path against an htpasswd file of its own that holds
+    nothing else, so the login here succeeds.
+
+    A browser keeps only one password per site, so it drops the
+    parent's real one and keeps the junk one. We then send it back to /,
+    where the junk password is refused and the login box opens.
+
+    The check below is there because nginx has to be the one asking for the
+    password. If it stops guarding this path, the browser is never asked, so
+    nothing replaces the real password and the parent stays logged in.
+
+    The redirect has to name the address in full. The parent gets here from
+    https://logout:logout@<host>/logout, and a bare "/" would tell the browser
+    to reuse everything in front of it -- logout:logout included. It would
+    arrive back at / still carrying the junk password, and a password in the
+    address always wins over one typed into the login box.
+
+    TODO: replace all of this with a session cookie and a login form, where
+    signing out simply deletes the cookie.
+    """
+    login = request.headers.get("x-remote-user", "")
+    if login != LOGOUT_LOGIN:
+        raise HTTPException(status_code=403, detail="/logout was not password-protected")
+    host = request.headers.get("host", "")
+    return RedirectResponse(f"https://{host}/", status_code=302)
 
 
 @app.post("/grants")

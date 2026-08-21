@@ -107,13 +107,18 @@
 <body>
   <div class="page">
     <!-- Logging out of basic auth means making the browser forget the password
-         it cached: navigating to / with a deliberately wrong one replaces it,
-         and the 401 that follows is a login box that actually works. The
-         credentials below are bogus on purpose. Scheme is hardcoded because a
-         redirect from http would drop them. nginx also keeps a /logout that
-         does the same via an empty htpasswd, for browsers that ignore
-         credentials in URLs. -->
-    <h1>Screen time<a class="whoami" href="https://logout:logout@{{ request.url.hostname }}/" title="Sign out">
+         it cached, and the only way to do that is to hand it a different one.
+         The credentials below are bogus on purpose; /logout is the one path
+         nginx checks against an htpasswd that contains nothing else, so they
+         are accepted there and take the place of the real password. It then
+         redirects to /, which 401s -- and because that URL carries no
+         credentials of its own, the login box it opens is one that can
+         actually be answered. Sending the bogus pair straight to / instead
+         would log the parent out and then refuse every password they type,
+         since credentials in the address bar beat anything typed into the
+         prompt. Scheme is hardcoded because a redirect from http would drop
+         them. -->
+    <h1>Screen time<a class="whoami" href="https://{{ logout_login }}:{{ logout_login }}@{{ request.url.hostname }}/logout" title="Sign out">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="8" r="3.6"></circle>
         <path d="M4.8 20c0-3.7 3.2-5.6 7.2-5.6s7.2 1.9 7.2 5.6"></path>
