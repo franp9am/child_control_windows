@@ -98,6 +98,23 @@ To generate the codes, the parent can run the create_code.py script on his machi
 Both machines share a secret password (`data/secret.txt` on each machine, or the `CHILD_SECRET` env var on the parent's) which should not be shared with the child.
 
 
+## Server accounts
+
+An account is two halves that have to agree on the login name:
+
+* a row in the `users` table, which says what family the parent belongs to -- `python server/add_user.py <login> <family>`
+* a line in `/etc/nginx/htpasswd`, which says how the parent proves that login -- `sudo htpasswd /etc/nginx/htpasswd <login>`
+
+Run `htpasswd` without `-c` to add a parent; the file holds one line per account and
+already supports as many as you like. `-c` creates the file and silently truncates an
+existing one, so it is only for the very first account.
+
+nginx checks the password and passes the name it verified to the app as `X-Remote-User`;
+`current_user` in `server/app.py` looks that name up to decide which family's devices the
+page shows. The header is set from `$remote_user` inside the authenticated location and
+blanked on `/api/` and `/health`, so a client cannot supply its own. The app must never be
+reachable except through the proxy, so start uvicorn on `--host 127.0.0.1` (the default).
+
 ## Python dependencies
 
 None!
