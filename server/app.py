@@ -39,9 +39,17 @@ class SyncResponse(BaseModel):
 
 
 @dataclass
+class User:
+    id: int
+    login: str
+    family_id: int
+
+
+@dataclass
 class GrantView:
     minutes: int
     created: str
+    granted_by: str
 
 
 @dataclass
@@ -139,15 +147,17 @@ def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | 
 
 def pending_grants(connection: sqlite3.Connection, device_id: int) -> list[GrantView]:
     rows = connection.execute(
-        """SELECT seconds, created_at FROM grants
-           WHERE device_id = :device_id AND acked_at IS NULL
-           ORDER BY id DESC""",
+        """SELECT grants.seconds, grants.created_at, users.login FROM grants
+           JOIN users ON users.id = grants.granted_by
+           WHERE grants.device_id = :device_id AND grants.acked_at IS NULL
+           ORDER BY grants.id DESC""",
         {"device_id": device_id},
     ).fetchall()
     return [
         GrantView(
             minutes=row["seconds"] // 60,
             created=formatted_local_time(row["created_at"]),
+            granted_by=row["login"],
         )
         for row in rows
     ]
@@ -170,19 +180,51 @@ def export_filename(device_name: str, table: str) -> str:
     return f"{re.sub(r'[^A-Za-z0-9]+', '-', device_name).strip('-') or 'device'}-{table}.csv"
 
 
-def device_name_or_404(connection: sqlite3.Connection, device_id: int) -> str:
+def devices_in_family(connection: sqlite3.Connection, family_id: int) -> list[sqlite3.Row]:
+    return connection.execute(
+        "SELECT id, name FROM devices WHERE family_id = :family_id ORDER BY id",
+        {"family_id": family_id},
+    ).fetchall()
+
+
+def require_device_in_family(
+    connection: sqlite3.Connection, device_id: int, family_id: int
+) -> sqlite3.Row:
+    """A device belonging to another family is indistinguishable from one that does not exist."""
     device = connection.execute(
-        "SELECT name FROM devices WHERE id = :device_id", {"device_id": device_id}
+        "SELECT id, name FROM devices WHERE id = :device_id AND family_id = :family_id",
+        {"device_id": device_id, "family_id": family_id},
     ).fetchone()
     if device is None:
         raise HTTPException(status_code=404, detail="unknown device")
-    return device["name"]
+    return device
 
 
 db.create_schema()
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+
+
+def current_user(request: Request) -> User:
+    """The only place that knows how a person proves who they are.
+
+    nginx does the authenticating and passes the name it verified; swapping it
+    for a session cookie or an identity provider means rewriting this function
+    and nothing else. The app must therefore never be reachable except through
+    the proxy, which overwrites the header on every request.
+    """
+    login = request.headers.get("x-remote-user", "")
+    if not login:
+        raise HTTPException(status_code=403, detail="request did not come through the proxy")
+    connection = db.connect()
+    user = connection.execute(
+        "SELECT id, login, family_id FROM users WHERE login = :login", {"login": login}
+    ).fetchone()
+    connection.close()
+    if user is None:
+        raise HTTPException(status_code=403, detail=f"no account for {login}")
+    return User(id=user["id"], login=user["login"], family_id=user["family_id"])
 
 
 def authenticated_device_id(authorization: str) -> int:
@@ -258,8 +300,9 @@ def health() -> dict[str, str]:
 
 @app.get("/")
 def index(request: Request, device_id: int | None = None) -> HTMLResponse:
+    user = current_user(request)
     connection = db.connect()
-    devices = connection.execute("SELECT id, name FROM devices ORDER BY id").fetchall()
+    devices = devices_in_family(connection, user.family_id)
     selected_device = next(
         (device for device in devices if device["id"] == device_id),
         devices[0] if devices else None,
@@ -275,6 +318,7 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
         request,
         "index.html",
         {
+            "user": user,
             "devices": devices,
             "selected_device": selected_device,
             "pending_grants": waiting,
@@ -286,6 +330,7 @@ def index(request: Request, device_id: int | None = None) -> HTMLResponse:
 
 @app.post("/grants")
 async def create_grant(request: Request) -> RedirectResponse:
+    user = current_user(request)
     form = await request.form()
     try:
         device_id = int(form["device_id"])
@@ -295,14 +340,18 @@ async def create_grant(request: Request) -> RedirectResponse:
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     connection = db.connect()
     try:
+        require_device_in_family(connection, device_id, user.family_id)
         with connection:
             connection.execute(
-                """INSERT INTO grants (device_id, seconds, created_at)
-                   VALUES (:device_id, :seconds, :created_at)""",
-                {"device_id": device_id, "seconds": seconds, "created_at": created_at},
+                """INSERT INTO grants (device_id, granted_by, seconds, created_at)
+                   VALUES (:device_id, :granted_by, :seconds, :created_at)""",
+                {
+                    "device_id": device_id,
+                    "granted_by": user.id,
+                    "seconds": seconds,
+                    "created_at": created_at,
+                },
             )
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=404, detail="unknown device")
     finally:
         connection.close()
     target = request.url_for("index").include_query_params(device_id=device_id)
@@ -310,14 +359,17 @@ async def create_grant(request: Request) -> RedirectResponse:
 
 
 @app.get("/export/grants")
-def export_grants(device_id: int) -> Response:
+def export_grants(request: Request, device_id: int) -> Response:
+    user = current_user(request)
     connection = db.connect()
     try:
-        device_name = device_name_or_404(connection, device_id)
+        device_name = require_device_in_family(connection, device_id, user.family_id)["name"]
         rows = connection.execute(
-            """SELECT id, seconds, created_at, acked_at FROM grants
-               WHERE device_id = :device_id
-               ORDER BY id""",
+            """SELECT grants.id, grants.seconds, grants.created_at, grants.acked_at, users.login
+               FROM grants
+               JOIN users ON users.id = grants.granted_by
+               WHERE grants.device_id = :device_id
+               ORDER BY grants.id""",
             {"device_id": device_id},
         ).fetchall()
     finally:
@@ -325,11 +377,12 @@ def export_grants(device_id: int) -> Response:
     zone = DISPLAY_TIMEZONE.key
     return csv_download(
         filename=export_filename(device_name, "grants"),
-        header=["id", "minutes", f"created ({zone})", f"applied ({zone})"],
+        header=["id", "minutes", "granted by", f"created ({zone})", f"applied ({zone})"],
         rows=[
             [
                 row["id"],
                 row["seconds"] // 60,
+                row["login"],
                 formatted_local_time(row["created_at"]),
                 formatted_local_time(row["acked_at"]) if row["acked_at"] else "",
             ]
@@ -339,10 +392,11 @@ def export_grants(device_id: int) -> Response:
 
 
 @app.get("/export/screen-time")
-def export_screen_time(device_id: int) -> Response:
+def export_screen_time(request: Request, device_id: int) -> Response:
+    user = current_user(request)
     connection = db.connect()
     try:
-        device_name = device_name_or_404(connection, device_id)
+        device_name = require_device_in_family(connection, device_id, user.family_id)["name"]
         rows = connection.execute(
             """SELECT date, time_spent_sec, carryover_sec, granted_sec, remaining_sec,
                       last_tick, updated_at

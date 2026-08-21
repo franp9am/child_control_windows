@@ -8,14 +8,26 @@ DB_PATH = Path(
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS families (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    login TEXT NOT NULL UNIQUE,
+    family_id INTEGER NOT NULL REFERENCES families(id)
+);
 CREATE TABLE IF NOT EXISTS devices (
     id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    token TEXT NOT NULL UNIQUE
+    family_id INTEGER NOT NULL REFERENCES families(id),
+    name TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    UNIQUE (family_id, name)
 );
 CREATE TABLE IF NOT EXISTS grants (
     id INTEGER PRIMARY KEY,
     device_id INTEGER NOT NULL REFERENCES devices(id),
+    granted_by INTEGER NOT NULL REFERENCES users(id),
     seconds INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     acked_at TEXT

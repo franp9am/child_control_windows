@@ -84,11 +84,13 @@
   }
   .export a:hover { background: #f2f2f2; border-color: #999; color: #1a1a1a; }
   .empty { color: #888; font-size: .9rem; }
+  .whoami { float: right; font-size: .8rem; font-weight: 400; color: #888; }
+  .grants .by { color: #a06158; font-size: .82rem; }
 </style>
 </head>
 <body>
   <div class="page">
-    <h1>Screen time</h1>
+    <h1>Screen time <span class="whoami">{{ user.login }}</span></h1>
 
     {% if devices %}
     <nav class="tabs">
@@ -116,6 +118,7 @@
           {% for grant in pending_grants %}
           <li>
             <span class="amount">{% if grant.minutes > 0 %}+{% endif %}{{ grant.minutes }} min</span>
+            <span class="by">by {{ grant.granted_by }}</span>
             <span class="created">{{ grant.created }}</span>
           </li>
           {% endfor %}
@@ -169,7 +172,7 @@
       </div>
     </div>
     {% else %}
-    <p class="empty">No devices registered yet. Add one with <code>add_device.py</code>.</p>
+    <p class="empty">No devices in your family yet. Add one with <code>add_device.py</code>.</p>
     {% endif %}
   </div>
   <script>
