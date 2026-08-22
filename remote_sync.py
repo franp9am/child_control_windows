@@ -29,6 +29,8 @@ class DailyStatus:
     granted_sec: int
     remaining_sec: int
     last_tick: Optional[str]
+    # the override set in force, so the server can resend its config until this matches
+    config_overrides: dict
 
 
 @dataclass

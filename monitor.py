@@ -351,6 +351,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         granted_sec=data["granted_sec"],
         remaining_sec=remaining_seconds(data, settings),
         last_tick=data["last_tick"],
+        config_overrides=config.load_overrides(),
     )
     already_applied = remote_sync.load_applied_grant_ids()
     try:
