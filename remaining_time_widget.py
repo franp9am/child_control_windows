@@ -50,8 +50,12 @@ _KEY_IS_DOWN = 0x8000
 # through to whatever is underneath (so the box never blocks the close button of
 # a maximised window) and never taking focus from the app in use.
 _GWL_EXSTYLE = -20
+# Clicks only fall through a layered window. Tk layers the window as a side
+# effect of an opacity below 1.0, but that is not relied on here.
+_WS_EX_LAYERED = 0x00080000
 _WS_EX_TRANSPARENT = 0x00000020
 _WS_EX_NOACTIVATE = 0x08000000
+_LWA_ALPHA = 0x00000002
 _GA_ROOT = 2  # winfo_id() names an inner window; this walks up to the real one
 
 _user32 = ctypes.windll.user32
@@ -62,6 +66,12 @@ _user32.GetAncestor.restype = wintypes.HWND
 _user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
 _user32.GetWindowLongW.restype = ctypes.c_long
 _user32.SetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int, ctypes.c_long)
+_user32.SetLayeredWindowAttributes.argtypes = (
+    wintypes.HWND,
+    wintypes.COLORREF,
+    ctypes.c_ubyte,
+    wintypes.DWORD,
+)
 _user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
 _user32.GetAsyncKeyState.restype = ctypes.c_short
 
@@ -127,7 +137,12 @@ class RemainingTimeWidget:
     def _apply_click_through(self):
         hwnd = _user32.GetAncestor(self.root.winfo_id(), _GA_ROOT)
         style = _user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
-        _user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, style | _WS_EX_TRANSPARENT | _WS_EX_NOACTIVATE)
+        _user32.SetWindowLongW(
+            hwnd, _GWL_EXSTYLE, style | _WS_EX_LAYERED | _WS_EX_TRANSPARENT | _WS_EX_NOACTIVATE
+        )
+        # A layered window does not render until its alpha is set, and Tk only
+        # sets it for an opacity below 1.0.
+        _user32.SetLayeredWindowAttributes(hwnd, 0, int(OPACITY * 255), _LWA_ALPHA)
 
     def _position_in_corner(self):
         # Let Tk lay the new text out first, or the width is the previous one
