@@ -33,7 +33,9 @@ def main() -> None:
     print(f"{login} added to family {family_name}")
     # The htpasswd file is the other half of an account: this row says which
     # family the login belongs to, that file says how the login is proved.
-    print(f"now give them a password: sudo htpasswd /etc/nginx/htpasswd {login}")
+    # -B -C 10 is bcrypt at a work factor of about 100 ms per check: plain
+    # htpasswd still defaults to MD5, which a stolen file gives up in minutes.
+    print(f"now give them a password: sudo htpasswd -B -C 10 /etc/nginx/htpasswd {login}")
     print("(add -c if /etc/nginx/htpasswd does not exist yet -- it truncates the file)")
 
 

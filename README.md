@@ -118,11 +118,17 @@ An answer without that key -- which is every answer the server sends today -- ch
 An account is two halves that have to agree on the login name:
 
 * a row in the `users` table, which says what family the parent belongs to -- `python server/add_user.py <login> <family>`
-* a line in `/etc/nginx/htpasswd`, which says how the parent proves that login -- `sudo htpasswd /etc/nginx/htpasswd <login>`
+* a line in `/etc/nginx/htpasswd`, which says how the parent proves that login -- `sudo htpasswd -B -C 10 /etc/nginx/htpasswd <login>`
 
 Run `htpasswd` without `-c` to add a parent; the file holds one line per account and
 already supports as many as you like. `-c` creates the file and silently truncates an
 existing one, so it is only for the very first account.
+
+`-B` picks bcrypt, `-C 10` the work factor -- about 100 ms per check, so guessing costs
+real CPU and a stolen file stays useless. Without them htpasswd writes MD5 (`$apr1$`),
+which is worth cracking offline. nginx verifies the password on every request, so the
+factor is a ceiling on how fast anyone can guess as well as on how fast a parent's page
+loads; 10 is the balance, and much higher turns a flood of wrong passwords into real load.
 
 nginx checks the password and passes the name it verified to the app as `X-Remote-User`;
 `current_user` in `server/app.py` looks that name up to decide which family's devices the
