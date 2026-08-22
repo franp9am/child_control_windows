@@ -20,7 +20,7 @@ For the common case there is now an installer that does every step below for you
 3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
    * copy `monitor.py`, `remote_sync.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects `data\secret.txt`),
-   * ask which local account is the child's, then for the shared secret (Enter generates one) and, optionally, the device token for the parent's server, and write all three into the locked folder,
+   * ask which local account is the child's, then for the shared secret (Enter generates one) and, optionally, the device token and URL for the parent's server, and write it all into the locked folder,
    * copy the overlay widget into `C:\ProgramData\ScreenTimeShared`, the one folder every local account may write in, and put an "Extra time" shortcut on the shared desktop pointing at the redeem file there,
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.

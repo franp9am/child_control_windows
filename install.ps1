@@ -70,6 +70,20 @@ if (Test-Path $tokenFile) {
 }
 $deviceToken = (Read-Host $tokenPrompt).Trim()
 
+# Not written to a file like the secret and token: SERVER_URL is a plain
+# variable in config.py, so it's patched into the copy under $MonitorDir
+# below, straight after that file is copied there. Never into $src\config.py,
+# which is tracked in git -- a real hostname doesn't belong in the repo.
+$existingServerUrl = ""
+if (Test-Path "$MonitorDir\config.py") {
+    $existingServerUrl = [regex]::Match([IO.File]::ReadAllText("$MonitorDir\config.py"), 'SERVER_URL\s*=\s*"([^"]*)"').Groups[1].Value
+}
+$serverUrlPrompt = "Parent's server URL, e.g. https://screentime.example.com"
+if ($existingServerUrl) { $serverUrlPrompt += " (Enter keeps $existingServerUrl)" }
+else                    { $serverUrlPrompt += " (Enter to run without server syncing)" }
+$serverUrl = (Read-Host $serverUrlPrompt).Trim()
+if (-not $serverUrl) { $serverUrl = $existingServerUrl }
+
 # Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
 # Must be a machine-wide install under Program Files, not whatever python.exe
 # happens to resolve off the invoking (admin) user's PATH -- a per-user install
@@ -93,6 +107,8 @@ $pythonw = Join-Path (Split-Path $python) pythonw.exe   # windowless twin, for t
 # That lock is what stops the child reading data\secret.txt and forging codes.
 New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
 Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
+$copiedConfigPath = "$MonitorDir\config.py"
+[IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
 
 # Written only now, so neither credential ever sits in a folder the child can read.
