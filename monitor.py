@@ -364,12 +364,12 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
         send_message(message=f"extra time {grant.seconds}")
-    if answer.config_overrides:
+    if answer.config_overrides is not None:
         # Stored, so they outlive this run and stay in force while the server
         # is unreachable.
         settings = config.save_overrides(answer.config_overrides)
         data["event_log"].append(f"server config {answer.config_overrides} {now_str}")
-    if answer.pending_grants or already_applied or answer.config_overrides:
+    if answer.pending_grants or already_applied or answer.config_overrides is not None:
         save_data(data, datafile)
         remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])
     return settings

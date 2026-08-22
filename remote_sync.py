@@ -39,11 +39,11 @@ class Grant:
 
 @dataclass
 class SyncAnswer:
-    """Time grants, plus any settings the server wants this machine to use
-    (config.DEFAULT_SETTINGS names). An empty dict means it said nothing about them."""
+    """Time grants, plus the complete set of overrides the server wants in force
+    (config.SETTINGS names). None means it said nothing about them."""
 
     pending_grants: List[Grant]
-    config_overrides: dict
+    config_overrides: Optional[dict]
 
 
 def load_device_token() -> str:
@@ -97,11 +97,11 @@ def send_status(
     )
     with urllib.request.urlopen(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
         answer = json.load(response)
-    config_overrides = answer.get("config", {})
+    config_overrides = answer.get("config")
     return SyncAnswer(
         pending_grants=[
             Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
             for grant in answer["pending_grants"]
         ],
-        config_overrides=config_overrides if isinstance(config_overrides, dict) else {},
+        config_overrides=config_overrides if isinstance(config_overrides, dict) else None,
     )

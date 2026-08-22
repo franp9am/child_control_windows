@@ -27,26 +27,30 @@ SHUTDOWN_DELAY_SECONDS = 300  # grace period once the time is up
 NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
 STARTUP_DELAY_SECONDS = 60  # wait after boot before the first check
 
-# The server may change these too, so read them through get_config(), never as config.NAME.
-DEFAULT_SETTINGS = {
-    "DAILY_LIMIT_SECONDS": 60 * 60,
-    # if False, nothing rolls over and a redeemed code counts only for that day
-    "CARRYOVER": True,
-    # ceiling on what a fresh day inherits, so a month off is not a month of screen time
-    "MAX_CARRYOVER_SECONDS": 5 * 60 * 60,
-    "EARLIEST_HOUR_INCLUDED": 6,
-    "LATEST_HOUR_INCLUDED": 20,
+# Read these through get_config(), never directly: the OVERRIDE_FILE may override them.
+SETTINGS = {
+    "DAILY_LIMIT_SECONDS": {
+        "default": 1 * 60 * 60,
+        "allowed": range(24 * 60 * 60 + 1)
+    },
+    "CARRYOVER": {
+        "default": True,
+        "allowed": (True, False)
+    },
+    "MAX_CARRYOVER_SECONDS": {
+        "default": 5 * 60 * 60,
+        "allowed": range(7 * 24 * 60 * 60 + 1)
+    },
+    "EARLIEST_HOUR_INCLUDED": {
+        "default": 6,
+        "allowed": range(24)
+    },
+    "LATEST_HOUR_INCLUDED": {
+        "default": 20,
+        "allowed": range(24)
+    },
 }
 OVERRIDE_FILE = DATA_DIR / "override_config.json"
-
-# What the server may set each of them to; the paths above and SERVER_URL stay local.
-ALLOWED_VALUES = {
-    "DAILY_LIMIT_SECONDS": range(24 * 60 * 60 + 1),
-    "CARRYOVER": (True, False),
-    "MAX_CARRYOVER_SECONDS": range(7 * 24 * 60 * 60 + 1),
-    "EARLIEST_HOUR_INCLUDED": range(24),
-    "LATEST_HOUR_INCLUDED": range(24),
-}
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
@@ -60,27 +64,26 @@ def load_overrides() -> dict:
     return stored if isinstance(stored, dict) else {}
 
 
+def default_settings() -> dict:
+    return {name: setting["default"] for name, setting in SETTINGS.items()}
+
+
 def get_config() -> dict:
-    """The settings in force: DEFAULT_SETTINGS, with the override file on top."""
-    settings = dict(DEFAULT_SETTINGS)
+    """The settings in force: the defaults, with the override file on top."""
+    settings = default_settings()
     settings.update(load_overrides())
     return settings
 
 
 def save_overrides(sent: dict) -> dict:
-    """Store what the server sent and return the settings now in force."""
-    in_force = get_config()
-    update = {name: value for name, value in sent.items()
-              if name in ALLOWED_VALUES and value in ALLOWED_VALUES[name]}
-    earliest = update.get("EARLIEST_HOUR_INCLUDED", in_force["EARLIEST_HOUR_INCLUDED"])
-    latest = update.get("LATEST_HOUR_INCLUDED", in_force["LATEST_HOUR_INCLUDED"])
+    """Store `sent` as the complete override set and return the settings now in force."""
+    overrides = {name: value for name, value in sent.items()
+                 if name in SETTINGS and value in SETTINGS[name]["allowed"]}
+    resulting = {**default_settings(), **overrides}
     # an unusable window would shut the machine down before a correction could arrive
-    if earliest > latest:
-        update.pop("EARLIEST_HOUR_INCLUDED", None)
-        update.pop("LATEST_HOUR_INCLUDED", None)
-
-    overrides = load_overrides()
-    overrides.update(update)
+    if resulting["EARLIEST_HOUR_INCLUDED"] > resulting["LATEST_HOUR_INCLUDED"]:
+        overrides.pop("EARLIEST_HOUR_INCLUDED", None)
+        overrides.pop("LATEST_HOUR_INCLUDED", None)
     tmp_file = OVERRIDE_FILE.with_suffix(".tmp")
     tmp_file.write_text(json.dumps(overrides, indent=2), encoding="utf-8")
     os.replace(tmp_file, OVERRIDE_FILE)  # atomic
