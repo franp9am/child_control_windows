@@ -71,7 +71,8 @@ Setup, run under the **child's own account** (not SYSTEM):
 ```
 C:\Path\To\pythonw.exe C:\ProgramData\ScreenTimeShared\remaining_time_widget.py
 ```
-* The child can close the widget window with Alt+F4 if they want; this is just a visual reminder, the actual enforcement is done by monitor.py.
+* The child can hide the widget with **Ctrl+Alt+H** and bring it back with the same shortcut; the combination is registered system-wide, so it works whatever app has focus. If another program already owns that combination the widget starts anyway, it just cannot be hidden -- change `HOTKEY_MODIFIERS` / `HOTKEY_VIRTUAL_KEY` at the top of the script to pick another one.
+* Being on top costs nothing: clicks pass straight through the box to the window underneath (so it never blocks the close button of a maximised window), it never takes focus, and it stays out of Alt+Tab and the taskbar. That also means it cannot be closed with Alt+F4 any more -- hiding it is the shortcut above, and killing it for good is Task Manager. Either way this is just a visual reminder, the actual enforcement is done by monitor.py.
 
 
 ## Safety
