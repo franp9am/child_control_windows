@@ -6,7 +6,6 @@ Displays the remaining time information content from a text file.
 import ctypes
 import math
 import sys
-import threading
 import time
 import tkinter as tk
 from ctypes import wintypes
@@ -35,6 +34,37 @@ COLOR_NORMAL = "#2ecc71"
 COLOR_WARNING = "#f39c12"
 COLOR_CRITICAL = "#e74c3c"
 
+# Ctrl+Alt+H hides the widget, the same combination brings it back. The keyboard
+# state is read directly rather than claiming the combination from Windows, so
+# it works whatever app has focus and cannot clash with another program's
+# shortcut. The keys still reach that app as well.
+HOTKEY_POLL_MS = 100
+_VK_CONTROL = 0x11
+_VK_ALT = 0x12
+_VK_H = 0x48
+HOTKEY_KEYS = (_VK_CONTROL, _VK_ALT, _VK_H)
+_KEY_IS_DOWN = 0x8000
+
+# Tk can make the window borderless, topmost, translucent and taskbar-free by
+# itself. These are the two things it has no attribute for: clicks falling
+# through to whatever is underneath (so the box never blocks the close button of
+# a maximised window) and never taking focus from the app in use.
+_GWL_EXSTYLE = -20
+_WS_EX_TRANSPARENT = 0x00000020
+_WS_EX_NOACTIVATE = 0x08000000
+_GA_ROOT = 2  # winfo_id() names an inner window; this walks up to the real one
+
+_user32 = ctypes.windll.user32
+# Spelled out because the defaults would truncate window handles to 32 bits on
+# 64-bit Windows.
+_user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetAncestor.restype = wintypes.HWND
+_user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
+_user32.GetWindowLongW.restype = ctypes.c_long
+_user32.SetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int, ctypes.c_long)
+_user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+_user32.GetAsyncKeyState.restype = ctypes.c_short
+
 
 def format_remaining(seconds):
     """Whole hours and minutes, rounded up so anything under a minute still
@@ -60,63 +90,9 @@ def color_for(seconds):
     return COLOR_NORMAL
 
 
-# Win32 constants. The widget sits at the very top of the z-order so it stays
-# readable over whatever is open, and is styled so that being on top costs the
-# child nothing: clicks pass straight through it, it never takes focus, and it
-# stays out of Alt+Tab and the taskbar.
-_HWND_TOPMOST = -1
-_SWP_NOMOVE = 0x0002
-_SWP_NOSIZE = 0x0001
-_SWP_NOACTIVATE = 0x0010
-
-_GWL_EXSTYLE = -20
-_WS_EX_TRANSPARENT = 0x00000020  # mouse events go to the window underneath
-_WS_EX_TOOLWINDOW = 0x00000080  # no taskbar button, no Alt+Tab entry
-_WS_EX_NOACTIVATE = 0x08000000  # never steals focus from the app in use
-
-_GA_ROOT = 2  # winfo_id() can name an inner window; this walks up to the real one
-
-# Ctrl+Alt+H hides the widget, the same combination brings it back. Registered
-# system-wide, so it works whatever else has focus.
-_MOD_ALT = 0x0001
-_MOD_CONTROL = 0x0002
-_MOD_NOREPEAT = 0x4000  # holding the keys down toggles once, not repeatedly
-_WM_HOTKEY = 0x0312
-HOTKEY_MODIFIERS = _MOD_CONTROL | _MOD_ALT | _MOD_NOREPEAT
-HOTKEY_VIRTUAL_KEY = 0x48  # 'H'
-HOTKEY_POLL_MS = 100
-
-_user32 = ctypes.windll.user32
-# Spelled out because the defaults would truncate window handles (and
-# _HWND_TOPMOST) to 32 bits on 64-bit Windows.
-_user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
-_user32.GetAncestor.restype = wintypes.HWND
-_user32.SetWindowPos.argtypes = (wintypes.HWND, wintypes.HWND, ctypes.c_int,
-                                 ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT)
-_user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
-_user32.GetWindowLongW.restype = ctypes.c_long
-_user32.SetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int, ctypes.c_long)
-_user32.RegisterHotKey.argtypes = (wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT)
-_user32.GetMessageW.argtypes = (ctypes.POINTER(wintypes.MSG), wintypes.HWND,
-                                wintypes.UINT, wintypes.UINT)
-_user32.GetMessageW.restype = ctypes.c_int
-
-
-def listen_for_hotkey(on_pressed):
-    """Call on_pressed() every time the toggle shortcut is hit, forever.
-
-    Windows delivers the hotkey to the thread that registered it, and Tk's own
-    message loop would quietly drop a thread message it knows nothing about, so
-    this runs its own loop and belongs on a dedicated thread. If the shortcut is
-    already taken by another program it simply returns: the widget still works,
-    it just cannot be hidden.
-    """
-    if not _user32.RegisterHotKey(None, 1, HOTKEY_MODIFIERS, HOTKEY_VIRTUAL_KEY):
-        return
-    message = wintypes.MSG()
-    while _user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
-        if message.message == _WM_HOTKEY:
-            on_pressed()
+def hotkey_is_down():
+    """True while every key of the toggle shortcut is held at once."""
+    return all(_user32.GetAsyncKeyState(key) & _KEY_IS_DOWN for key in HOTKEY_KEYS)
 
 
 class RemainingTimeWidget:
@@ -125,6 +101,7 @@ class RemainingTimeWidget:
         self.root.overrideredirect(True)
         self.root.attributes("-alpha", OPACITY)
         self.root.attributes("-topmost", True)
+        self.root.attributes("-toolwindow", True)  # no taskbar button, no Alt+Tab entry
         self.root.configure(bg="black")
 
         self.label = tk.Label(
@@ -139,33 +116,18 @@ class RemainingTimeWidget:
         self.label.pack()
 
         self.hidden = False
-        # Set from the hotkey thread, acted on by the Tk thread: tkinter calls
-        # are only safe from the thread running the main loop.
-        self.toggle_requested = threading.Event()
+        self.hotkey_was_down = False
 
         self.root.update_idletasks()
-        self._apply_window_styles()
-        self._raise_to_top()
+        self._apply_click_through()
 
-        threading.Thread(
-            target=listen_for_hotkey,
-            args=(self.toggle_requested.set,),
-            daemon=True,
-        ).start()
-        self.root.after(HOTKEY_POLL_MS, self.check_toggle_request)
+        self.root.after(HOTKEY_POLL_MS, self.check_hotkey)
         self.update_label()
 
-    def _hwnd(self):
-        return _user32.GetAncestor(self.root.winfo_id(), _GA_ROOT)
-
-    def _apply_window_styles(self):
-        hwnd = self._hwnd()
+    def _apply_click_through(self):
+        hwnd = _user32.GetAncestor(self.root.winfo_id(), _GA_ROOT)
         style = _user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
-        _user32.SetWindowLongW(
-            hwnd,
-            _GWL_EXSTYLE,
-            style | _WS_EX_TRANSPARENT | _WS_EX_TOOLWINDOW | _WS_EX_NOACTIVATE,
-        )
+        _user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, style | _WS_EX_TRANSPARENT | _WS_EX_NOACTIVATE)
 
     def _position_in_corner(self):
         # Let Tk lay the new text out first, or the width is the previous one
@@ -177,24 +139,13 @@ class RemainingTimeWidget:
         y = MARGIN_PX
         self.root.geometry(f"+{x}+{y}")
 
-    def _raise_to_top(self):
-        """Re-assert the top of the z-order; other programs claim it too, and
-        the last one to ask wins."""
-        _user32.SetWindowPos(
-            self._hwnd(),
-            _HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE,
-        )
-
-    def check_toggle_request(self):
-        if self.toggle_requested.is_set():
-            self.toggle_requested.clear()
+    def check_hotkey(self):
+        """Toggle once per press, rather than on every poll while it is held."""
+        down = hotkey_is_down()
+        if down and not self.hotkey_was_down:
             self.toggle_visibility()
-        self.root.after(HOTKEY_POLL_MS, self.check_toggle_request)
+        self.hotkey_was_down = down
+        self.root.after(HOTKEY_POLL_MS, self.check_hotkey)
 
     def toggle_visibility(self):
         self.hidden = not self.hidden
@@ -202,12 +153,12 @@ class RemainingTimeWidget:
             self.root.withdraw()
         else:
             self.root.deiconify()
-            # Showing the window again can drop the borderless flag and the
-            # extended styles, so set the whole thing up from scratch.
+            # Showing the window again can drop everything set on it once, so
+            # put the whole lot back.
             self.root.overrideredirect(True)
-            self._apply_window_styles()
+            self.root.attributes("-topmost", True)
+            self._apply_click_through()
             self._position_in_corner()
-            self._raise_to_top()
 
     def read_remaining_seconds(self):
         """Seconds left, or None while the monitor isn't publishing them."""
@@ -237,7 +188,6 @@ class RemainingTimeWidget:
         self.label.config(text=text, fg=color)
         if not self.hidden:
             self._position_in_corner()
-            self._raise_to_top()
         self.root.after(POLL_INTERVAL_MS, self.update_label)
 
     def run(self):
