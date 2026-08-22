@@ -24,7 +24,7 @@ from config import (
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
-    TARGET_USER,
+    TARGET_USER_FILE,
     USED_CODES_FILE,
 )
 
@@ -160,6 +160,24 @@ def log_unexpected_error():
             f.write(f"--- {now_str} ---\n{traceback.format_exc()}\n")
     except Exception:
         pass
+
+
+def load_target_user() -> str:
+    """The child's account, as install.ps1 wrote it; there is no default."""
+    try:
+        name = TARGET_USER_FILE.read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        name = ""
+    if not name:
+        raise ValueError(f"No child account in {TARGET_USER_FILE}; run install.ps1 to set it")
+    return name
+
+
+try:
+    TARGET_USER = load_target_user()
+except Exception:
+    log_unexpected_error()  # a failure this early leaves no other trace
+    raise
 
 
 def query_users():

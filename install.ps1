@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
-$MonitorDir = "C:\ProgramData\ScreenTime"        # monitor + data; hidden from the child
-$WidgetDir  = "C:\ProgramData\ScreenTimeWidget"  # overlay; the child may read this
+$MonitorDir    = "C:\ProgramData\ScreenTime"        # monitor + data; hidden from the child
+$OldWidgetDir  = "C:\ProgramData\ScreenTimeWidget"  # older installs; removed further down
 
 # Re-launch as administrator if we aren't already.
 $admin = [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -10,30 +10,56 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 $src = $PSScriptRoot
 
-# The child's account name lives in config.py -- read it from there.
 $configText = Get-Content -Raw "$src\config.py"
-$childUser = [regex]::Match($configText, 'TARGET_USER\s*=\s*["'']([^"'']+)').Groups[1].Value
-if (-not $childUser) { throw "Set TARGET_USER in config.py first." }
 
-# The widget task needs the remaining-time file path as an argument.
-$remainingFile = [regex]::Match($configText, 'REMAINING_TIME_FILE_PATH\s*=\s*Path\(r?["'']([^"'']+)').Groups[1].Value
-if (-not $remainingFile) { throw "Could not read REMAINING_TIME_FILE_PATH from config.py." }
+# Which account is the child's. A typed name invites a typo that would leave the
+# monitor watching an account nobody uses, so offer the real ones and check.
+$enabledUsers = @(Get-LocalUser | Where-Object { $_.Enabled } | ForEach-Object { $_.Name })
+$adminUsers = @()
+try {
+    $adminUsers = @(Get-LocalGroupMember -SID "S-1-5-32-544" | ForEach-Object { ($_.Name -split '\\')[-1] })
+} catch { }   # an orphaned SID in the group makes this throw; then nothing is filtered out
+$candidates = @($enabledUsers | Where-Object {
+    $_ -notin $adminUsers -and $_ -notin @("Guest", "DefaultAccount", "WDAGUtilityAccount")
+})
+
+if ($candidates.Count -eq 1) { $defaultUser = $candidates[0] } else { $defaultUser = "" }
+
+Write-Host "Local accounts: $($enabledUsers -join ', ')"
+$userPrompt = "Which one is the child's account"
+if ($defaultUser) { $userPrompt += " (Enter for $defaultUser)" }
+$childUser = (Read-Host $userPrompt).Trim()
+if (-not $childUser) { $childUser = $defaultUser }
+if ($enabledUsers -notcontains $childUser) {
+    throw "'$childUser' is not an enabled local account. Pick one of: $($enabledUsers -join ', ')"
+}
+
+# The folder the child may write in -- config.py is the single source for it.
+$SharedDir = [regex]::Match($configText, 'SHARED_DIR\s*=\s*Path\(r?["'']([^"'']+)').Groups[1].Value
+if (-not $SharedDir) { throw "Could not read SHARED_DIR from config.py." }
+$redeemFile = Join-Path $SharedDir "extra_time.txt"   # must match REDEEM_FILE_PATH in config.py
 
 # Both credentials live in files inside the locked data folder, never in
 # config.py, which is tracked in git. Ask for them before anything is installed;
 # they are written further down, once the folder ACL is in place.
 $secretFile = "$MonitorDir\data\secret.txt"
 $tokenFile  = "$MonitorDir\data\device_token.txt"
+$userFile   = "$MonitorDir\data\target_user.txt"
 
 $secretPrompt = "Shared secret for signing extra-time codes, at least 16 hex characters"
 if (Test-Path $secretFile) { $secretPrompt += " (Enter keeps the current one)" }
+else                       { $secretPrompt += " (Enter to generate one)" }
 $secretHex = (Read-Host $secretPrompt).Trim()
+$generatedSecret = ""
 if ($secretHex) {
     if ($secretHex -notmatch '^[0-9a-fA-F]{16,}$' -or $secretHex.Length % 2 -ne 0) {
-        throw "The secret must be an even number of hex characters, at least 16 (generate with: python -c `"import secrets; print(secrets.token_hex(16))`")."
+        throw "The secret must be an even number of hex characters, at least 16."
     }
 } elseif (-not (Test-Path $secretFile)) {
-    throw "Without a secret monitor.py cannot verify extra-time codes. Run the installer again with one."
+    $bytes = New-Object byte[] 16
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $secretHex = -join ($bytes | ForEach-Object { $_.ToString("x2") })
+    $generatedSecret = $secretHex   # printed at the end, for the parent's machine
 }
 
 $tokenPrompt = "Device token from add_device.py on the parent's server"
@@ -72,12 +98,23 @@ icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(O
 # Written only now, so neither credential ever sits in a folder the child can read.
 if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
 if ($deviceToken) { Set-Content -Path $tokenFile  -Value $deviceToken -Encoding ascii -NoNewline }
+# UTF-8 without a BOM, unlike the two above: an account name is not always ascii.
+[IO.File]::WriteAllText($userFile, $childUser)
 
-# Widget folder: child-readable, holds only the overlay script. (Remove the
-# config.py copy older installs put here -- the widget no longer reads it.)
-New-Item -ItemType Directory -Force $WidgetDir | Out-Null
-Copy-Item "$src\remaining_time_widget.py" $WidgetDir -Force
-Remove-Item "$WidgetDir\config.py" -Force -ErrorAction SilentlyContinue
+# Shared folder: every local account may write here. It holds only the overlay
+# script, the number it shows and the redeem file -- nothing that has to be
+# trusted, since the codes inside are signed and checked by monitor.py.
+New-Item -ItemType Directory -Force $SharedDir | Out-Null
+icacls $SharedDir /grant "*S-1-5-32-545:(OI)(CI)M" | Out-Null   # *S-1-5-32-545 = BUILTIN\Users
+Copy-Item "$src\remaining_time_widget.py" $SharedDir -Force
+if (-not (Test-Path $redeemFile)) { New-Item -ItemType File $redeemFile | Out-Null }
+if (Test-Path $OldWidgetDir) { Remove-Item $OldWidgetDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+# The shortcut goes on the shared desktop, which every account sees -- the
+# child's own Desktop folder may have been moved into OneDrive.
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:PUBLIC\Desktop\Extra time.lnk")
+$link.TargetPath = $redeemFile
+$link.Save()
 
 # Task 1 -- run monitor.py as SYSTEM at every startup.
 $run  = New-ScheduledTaskAction -Execute $python -Argument "`"$MonitorDir\monitor.py`"" -WorkingDirectory $MonitorDir
@@ -86,8 +123,13 @@ $opts = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOn
 Register-ScheduledTask "ScreenTimeMonitor" -Action $run -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $who -Settings $opts -Force | Out-Null
 
 # Task 2 -- show the overlay in the child's session when they log in.
-$run = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$WidgetDir\remaining_time_widget.py`" `"$remainingFile`"" -WorkingDirectory $WidgetDir
+$run = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$SharedDir\remaining_time_widget.py`"" -WorkingDirectory $SharedDir
 $who = New-ScheduledTaskPrincipal -UserId $childUser -LogonType Interactive
 Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Force | Out-Null
 
+if ($generatedSecret) {
+    Write-Host "`nShared secret, needed by create_code.py on your own machine:" -ForegroundColor Yellow
+    Write-Host "  $generatedSecret"
+    Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET)"
+}
 Write-Host "`nDone. Monitor starts after a reboot; the widget appears when $childUser logs in."

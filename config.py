@@ -2,17 +2,15 @@ import json
 import os
 from pathlib import Path
 
-TARGET_USER = "elias"  # as it shows up in `query user`
-
-# The child writes redeem codes into this one, so it lives in their own profile.
-REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
-
-# Published for remaining_time_widget.py; install.ps1 leaves it writable by SYSTEM only.
-REMAINING_TIME_FILE_PATH = Path(r"C:\ProgramData\ScreenTimeWidget\remaining_time.txt")
+# Every local account may read and write here, so nothing in it is trusted.
+SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
+REDEEM_FILE_PATH = SHARED_DIR / "extra_time.txt"  # the child pastes redeem codes in
+REMAINING_TIME_FILE_PATH = SHARED_DIR / "remaining_time.txt"  # read by the widget
 
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
+TARGET_USER_FILE = DATA_DIR / "target_user.txt"  # the child's account, written by install.ps1
 CRASH_LOG_FILE = DATA_DIR / "crash.log"
 
 # Hex, 8 bytes or more, written by the installer; the parent's machine needs the same one.

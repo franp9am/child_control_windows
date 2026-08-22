@@ -10,10 +10,9 @@ import time
 import tkinter as tk
 from pathlib import Path
 
-# Only used when no path is passed on the command line; must then match
-# REMAINING_TIME_FILE_PATH in monitor.py's config.py.
-DEFAULT_REMAINING_TIME_FILE = r"C:\ProgramData\ScreenTimeWidget\remaining_time.txt"
-REMAINING_TIME_FILE_PATH = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE)
+# The installer puts this script in the same folder as the file it displays.
+DEFAULT_REMAINING_TIME_FILE = Path(__file__).parent / "remaining_time.txt"
+REMAINING_TIME_FILE_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE
 
 # The monitor rewrites the file once per check interval (60 s); well past that
 # and it has died or been killed, so the number on screen means nothing.

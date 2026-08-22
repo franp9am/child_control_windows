@@ -16,16 +16,12 @@ Very basic. Compared to microsoft family safety, it has these advantages:
 For the common case there is now an installer that does every step below for you.
 
 1. Make sure the **child has a non-admin Windows account**.
-2. Edit `config.py` first -- at minimum `TARGET_USER` (the child's account name), `DAILY_LIMIT_SECONDS`, and the allowed-hours range. The installer reads its settings from there. The shared secret is **not** in `config.py`, which is tracked in git: the installer asks for it and writes it into the locked data folder. Generate one with, e.g.:
-   ```
-   python -c "import secrets; print(secrets.token_hex(16))"
-   ```
-   The parent's machine needs the **same** secret for `create_code.py`, either in its own `data/secret.txt` or in the `CHILD_SECRET` env var.
+2. Optionally edit `config.py` -- `DAILY_LIMIT_SECONDS` and the allowed-hours range, if the defaults don't suit you. Nothing there has to be changed to install: the installer lists the local accounts and asks which one is the child's, writing the answer to `data\target_user.txt` in the locked folder -- monitor.py refuses to start without that file, so upgrading by hand-copying the scripts is not enough, run the installer. It also generates a shared secret if you don't have one. The secret is deliberately **not** in `config.py`, which is tracked in git; it goes into the locked data folder. Whether typed or generated, the parent's machine needs the **same** secret for `create_code.py`, in its own `data/secret.txt` or in the `CHILD_SECRET` env var.
 3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
    * copy `monitor.py`, `remote_sync.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects `data\secret.txt`),
-   * ask for the shared secret and, optionally, the device token for the parent's server, and write both into the locked folder,
-   * copy the overlay widget into `C:\ProgramData\ScreenTimeWidget` (child-readable; the widget is self-contained and gets the remaining-time file path as a task argument, so no config goes there),
+   * ask which local account is the child's, then for the shared secret (Enter generates one) and, optionally, the device token for the parent's server, and write all three into the locked folder,
+   * copy the overlay widget into `C:\ProgramData\ScreenTimeShared`, the one folder every local account may write in, and put an "Extra time" shortcut on the shared desktop pointing at the redeem file there,
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.
 4. Reboot. The monitor runs from boot; the widget appears when the child logs in.
@@ -51,14 +47,13 @@ schtasks /create /tn "ScreenTimeMonitor" ^
 ``` 
 but I didn't test it.
 * Edit `config.py`, which sits next to the scripts and holds every setting. Nothing has to be changed in monitor.py itself. The ones you will care about (the five the server can also change are entries of `DEFAULT_SETTINGS`, the rest are plain variables):
-  * `TARGET_USER` -- child's windows account
   * `DAILY_LIMIT_SECONDS` -- how many seconds per day is the maximal screentime
   * `CARRYOVER` -- if `True`, unused time (including unused extra time from redeemed codes) rolls over to the next day; if `False`, each day starts fresh at `DAILY_LIMIT_SECONDS` and a redeemed code only grants extra time for the day it's redeemed
   * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
   * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
   * `SECRET_FILE` -- where the shared secret for signing extra-time codes is read from; the value must match the parent's machine
   * `SERVER_URL` -- the parent's server for remote grants, empty to run without one; the device token goes in `DEVICE_TOKEN_FILE`
-  * `REDEEM_FILE_PATH` -- path to a local file the children can access, to write a code in case you grant him extra time
+  * `REDEEM_FILE_PATH` -- the file the child writes a code into; it sits in `SHARED_DIR` and rarely needs changing
   * `DATA_DIR` -- where the per-day json files and the used-code list live
 
   Five of them can also be changed from the server; see below. The rest (poll intervals, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
@@ -69,12 +64,12 @@ but I didn't test it.
 `remaining_time_widget.py` shows a small always-on-top "time left" box in the top-right corner of the child's screen. monitor.py publishes the seconds remaining today to `REMAINING_TIME_FILE_PATH` on every tick; the widget only reads that one file and is fully self-contained -- it never touches `config.py` or the locked monitor folder.
 
 Setup, run under the **child's own account** (not SYSTEM):
-* Nothing extra to grant — the file lives in `C:\ProgramData\ScreenTimeWidget\` next to the widget script, which the installer leaves readable by all local accounts. Only SYSTEM (i.e. monitor.py) can write there, so the child can read the number but not fake it.
+* Nothing extra to grant — the file lives in `C:\ProgramData\ScreenTimeShared\` next to the widget script, and the installer grants every local account write access to that folder. The child can therefore overwrite the number or the widget script itself; both are cosmetic, since monitor.py rewrites the file every tick, the widget runs in the child's own session anyway, and enforcement never reads anything from there except the signed redeem code.
 * The widget shows `Time: --` if the file stops being refreshed for more than `STALE_AFTER_SECONDS`, rather than leaving a dead value on screen. A stale `0` is kept as "Time's up", since monitor.py writes it and then exits to shut the machine down.
-* The widget takes the remaining-time file path as its first command-line argument (the installer fills it in from config.py's `REMAINING_TIME_FILE_PATH`); without an argument it falls back to the default at the top of the script. Colours, font and poll interval are in the same block.
+* Without arguments the widget reads `remaining_time.txt` from its own folder, which is where the installer puts both. Pass a path as the first argument to point it somewhere else. Colours, font and poll interval are at the top of the script.
 * Put a shortcut to it in the child's Startup folder (`shell:startup`), targeting `pythonw.exe` (not `python.exe`, so no console window appears), e.g.
 ```
-C:\Path\To\pythonw.exe C:\Path\To\remaining_time_widget.py C:\ProgramData\ScreenTimeWidget\remaining_time.txt
+C:\Path\To\pythonw.exe C:\ProgramData\ScreenTimeShared\remaining_time_widget.py
 ```
 * The child can close the widget window with Alt+F4 if they want; this is just a visual reminder, the actual enforcement is done by monitor.py.
 
@@ -92,7 +87,7 @@ If you want to grant extra time to the child, you generate a code that looks lik
 * signature is 4 or more characters
 A typical code can look like 2026-07-23:3600:a184 which would grant an extra hour (3600 seconds). Codes are not tied to a date -- the date is never checked against the calendar, so a code can be redeemed any day. Each code can only be redeemed once, tracked in `data/used_redeem_codes.json`; to issue a second code of the same amount on the same day, pass a different `--date`.
 
-The child writes this code to the file specified in monitor.py text document.
+The child writes this code into `C:\ProgramData\ScreenTimeShared\extra_time.txt` (`REDEEM_FILE_PATH`), which the installer puts on the shared desktop as an "Extra time" shortcut -- the shared desktop shows up for every account, so it works whether or not the child's own Desktop has been moved into OneDrive. If the folder itself is ever deleted, monitor.py recreates it without the write permission, and redeeming stops working until install.ps1 is run again.
 
 To generate the codes, the parent can run the create_code.py script on his machine. It imports nothing from the rest of the project, so copying that one file over is enough -- but its `SIGNATURE_CHARS` has to keep matching the one in the child's `config.py`, or every code is rejected.
 Both machines share a secret password (`data/secret.txt` next to the script on each machine, or the `CHILD_SECRET` env var on the parent's) which should not be shared with the child.
