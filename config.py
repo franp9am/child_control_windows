@@ -18,7 +18,7 @@ SECRET_FILE = DATA_DIR / "secret.txt"
 
 # The parent's server, e.g. "https://screentime.example.com"; empty disables all syncing.
 SERVER_URL = ""
-DEVICE_TOKEN_FILE = DATA_DIR / "device_token.txt"  # from add_device.py on the server
+CHILD_TOKEN_FILE = DATA_DIR / "child_token.txt"  # from add_child.py on the server
 APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
 SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 

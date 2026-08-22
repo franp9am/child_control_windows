@@ -339,7 +339,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
     the server changed them."""
     if not SERVER_URL:
         return settings
-    token = remote_sync.load_device_token()
+    token = remote_sync.load_child_token()
     if not token:
         return settings
 

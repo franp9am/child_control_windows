@@ -12,12 +12,12 @@ CREATE TABLE IF NOT EXISTS families (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS parents (
     id INTEGER PRIMARY KEY,
     login TEXT NOT NULL UNIQUE,
     family_id INTEGER NOT NULL REFERENCES families(id)
 );
-CREATE TABLE IF NOT EXISTS devices (
+CREATE TABLE IF NOT EXISTS children (
     id INTEGER PRIMARY KEY,
     family_id INTEGER NOT NULL REFERENCES families(id),
     name TEXT NOT NULL,
@@ -26,14 +26,14 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 CREATE TABLE IF NOT EXISTS grants (
     id INTEGER PRIMARY KEY,
-    device_id INTEGER NOT NULL REFERENCES devices(id),
-    granted_by INTEGER NOT NULL REFERENCES users(id),
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    granted_by INTEGER NOT NULL REFERENCES parents(id),
     seconds INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     acked_at TEXT
 );
 CREATE TABLE IF NOT EXISTS status (
-    device_id INTEGER NOT NULL REFERENCES devices(id),
+    child_id INTEGER NOT NULL REFERENCES children(id),
     date TEXT NOT NULL,
     time_spent_sec INTEGER NOT NULL,
     carryover_sec INTEGER NOT NULL DEFAULT 0,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS status (
     remaining_sec INTEGER NOT NULL,
     last_tick TEXT,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (device_id, date)
+    PRIMARY KEY (child_id, date)
 );
 """
 

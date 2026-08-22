@@ -43,7 +43,7 @@ class SyncResponse(BaseModel):
 
 
 @dataclass
-class User:
+class Parent:
     id: int
     login: str
     family_id: int
@@ -106,14 +106,14 @@ def percent_of_tallest(seconds: int, tallest: int) -> int:
     return max(round(100 * seconds / tallest), 1)
 
 
-def last_week(connection: sqlite3.Connection, device_id: int) -> WeekUsage:
+def last_week(connection: sqlite3.Connection, child_id: int) -> WeekUsage:
     """Time spent on each of the last seven days, oldest first; missing days count as zero."""
     today = datetime.now(DISPLAY_TIMEZONE).date()
     days = [today - timedelta(days=offset) for offset in reversed(range(7))]
     rows = connection.execute(
         """SELECT date, time_spent_sec FROM status
-           WHERE device_id = :device_id AND date >= :first_day""",
-        {"device_id": device_id, "first_day": days[0].isoformat()},
+           WHERE child_id = :child_id AND date >= :first_day""",
+        {"child_id": child_id, "first_day": days[0].isoformat()},
     ).fetchall()
     spent_on = {row["date"]: row["time_spent_sec"] for row in rows}
     seconds_per_day = [max(spent_on.get(day.isoformat(), 0), 0) for day in days]
@@ -133,13 +133,13 @@ def last_week(connection: sqlite3.Connection, device_id: int) -> WeekUsage:
     )
 
 
-def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | None:
+def last_seen(connection: sqlite3.Connection, child_id: int) -> LastSeenView | None:
     row = connection.execute(
         """SELECT remaining_sec, updated_at FROM status
-           WHERE device_id = :device_id
+           WHERE child_id = :child_id
            ORDER BY date DESC
            LIMIT 1""",
-        {"device_id": device_id},
+        {"child_id": child_id},
     ).fetchone()
     if row is None:
         return None
@@ -149,13 +149,13 @@ def last_seen(connection: sqlite3.Connection, device_id: int) -> LastSeenView | 
     )
 
 
-def pending_grants(connection: sqlite3.Connection, device_id: int) -> list[GrantView]:
+def pending_grants(connection: sqlite3.Connection, child_id: int) -> list[GrantView]:
     rows = connection.execute(
-        """SELECT grants.seconds, grants.created_at, users.login FROM grants
-           JOIN users ON users.id = grants.granted_by
-           WHERE grants.device_id = :device_id AND grants.acked_at IS NULL
+        """SELECT grants.seconds, grants.created_at, parents.login FROM grants
+           JOIN parents ON parents.id = grants.granted_by
+           WHERE grants.child_id = :child_id AND grants.acked_at IS NULL
            ORDER BY grants.id DESC""",
-        {"device_id": device_id},
+        {"child_id": child_id},
     ).fetchall()
     return [
         GrantView(
@@ -179,29 +179,29 @@ def csv_download(filename: str, header: list[str], rows: list[list]) -> Response
     )
 
 
-def export_filename(device_name: str, table: str) -> str:
-    """Device names are free text, so keep only what is safe in a header and a filename."""
-    return f"{re.sub(r'[^A-Za-z0-9]+', '-', device_name).strip('-') or 'device'}-{table}.csv"
+def export_filename(child_name: str, table: str) -> str:
+    """Child names are free text, so keep only what is safe in a header and a filename."""
+    return f"{re.sub(r'[^A-Za-z0-9]+', '-', child_name).strip('-') or 'child'}-{table}.csv"
 
 
-def devices_in_family(connection: sqlite3.Connection, family_id: int) -> list[sqlite3.Row]:
+def children_in_family(connection: sqlite3.Connection, family_id: int) -> list[sqlite3.Row]:
     return connection.execute(
-        "SELECT id, name FROM devices WHERE family_id = :family_id ORDER BY id",
+        "SELECT id, name FROM children WHERE family_id = :family_id ORDER BY id",
         {"family_id": family_id},
     ).fetchall()
 
 
-def require_device_in_family(
-    connection: sqlite3.Connection, device_id: int, family_id: int
+def require_child_in_family(
+    connection: sqlite3.Connection, child_id: int, family_id: int
 ) -> sqlite3.Row:
-    """A device belonging to another family is indistinguishable from one that does not exist."""
-    device = connection.execute(
-        "SELECT id, name FROM devices WHERE id = :device_id AND family_id = :family_id",
-        {"device_id": device_id, "family_id": family_id},
+    """A child belonging to another family is indistinguishable from one that does not exist."""
+    child = connection.execute(
+        "SELECT id, name FROM children WHERE id = :child_id AND family_id = :family_id",
+        {"child_id": child_id, "family_id": family_id},
     ).fetchone()
-    if device is None:
-        raise HTTPException(status_code=404, detail="unknown device")
-    return device
+    if child is None:
+        raise HTTPException(status_code=404, detail="unknown child")
+    return child
 
 
 db.create_schema()
@@ -210,7 +210,7 @@ app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
-def current_user(request: Request) -> User:
+def current_parent(request: Request) -> Parent:
     """The only place that knows how a person proves who they are.
 
     nginx does the authenticating and passes the name it verified; swapping it
@@ -222,41 +222,41 @@ def current_user(request: Request) -> User:
     if not login:
         raise HTTPException(status_code=403, detail="request did not come through the proxy")
     connection = db.connect()
-    user = connection.execute(
-        "SELECT id, login, family_id FROM users WHERE login = :login", {"login": login}
+    parent = connection.execute(
+        "SELECT id, login, family_id FROM parents WHERE login = :login", {"login": login}
     ).fetchone()
     connection.close()
-    if user is None:
-        raise HTTPException(status_code=403, detail=f"no account for {login}")
-    return User(id=user["id"], login=user["login"], family_id=user["family_id"])
+    if parent is None:
+        raise HTTPException(status_code=403, detail=f"no parent for {login}")
+    return Parent(id=parent["id"], login=parent["login"], family_id=parent["family_id"])
 
 
-def authenticated_device_id(authorization: str) -> int:
+def authenticated_child_id(authorization: str) -> int:
     scheme, _, token = authorization.partition(" ")
     if scheme != "Bearer" or not token:
         raise HTTPException(status_code=401, detail="missing bearer token")
     connection = db.connect()
-    device = connection.execute(
-        "SELECT id FROM devices WHERE token = :token", {"token": token}
+    child = connection.execute(
+        "SELECT id FROM children WHERE token = :token", {"token": token}
     ).fetchone()
     connection.close()
-    if device is None:
+    if child is None:
         raise HTTPException(status_code=401, detail="unknown token")
-    return device["id"]
+    return child["id"]
 
 
 @app.post("/api/sync")
 def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
-    device_id = authenticated_device_id(http_request.headers.get("authorization", ""))
+    child_id = authenticated_child_id(http_request.headers.get("authorization", ""))
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     connection = db.connect()
     with connection:
         connection.execute(
-            """INSERT INTO status (device_id, date, time_spent_sec, carryover_sec,
+            """INSERT INTO status (child_id, date, time_spent_sec, carryover_sec,
                                    granted_sec, remaining_sec, last_tick, updated_at)
-               VALUES (:device_id, :date, :time_spent_sec, :carryover_sec,
+               VALUES (:child_id, :date, :time_spent_sec, :carryover_sec,
                        :granted_sec, :remaining_sec, :last_tick, :updated_at)
-               ON CONFLICT (device_id, date) DO UPDATE SET
+               ON CONFLICT (child_id, date) DO UPDATE SET
                    time_spent_sec = :time_spent_sec,
                    carryover_sec = :carryover_sec,
                    granted_sec = :granted_sec,
@@ -264,7 +264,7 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                    last_tick = :last_tick,
                    updated_at = :updated_at""",
             {
-                "device_id": device_id,
+                "child_id": child_id,
                 "date": sync_request.date,
                 "time_spent_sec": sync_request.time_spent_sec,
                 "carryover_sec": sync_request.carryover_sec,
@@ -276,17 +276,17 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
         )
         connection.executemany(
             """UPDATE grants SET acked_at = :now
-               WHERE id = :grant_id AND device_id = :device_id AND acked_at IS NULL""",
+               WHERE id = :grant_id AND child_id = :child_id AND acked_at IS NULL""",
             [
-                {"now": now, "grant_id": grant_id, "device_id": device_id}
+                {"now": now, "grant_id": grant_id, "child_id": child_id}
                 for grant_id in sync_request.applied_grant_ids
             ],
         )
         pending = connection.execute(
             """SELECT id, seconds FROM grants
-               WHERE device_id = :device_id AND acked_at IS NULL
+               WHERE child_id = :child_id AND acked_at IS NULL
                ORDER BY id""",
-            {"device_id": device_id},
+            {"child_id": child_id},
         ).fetchall()
     connection.close()
     return SyncResponse(
@@ -297,34 +297,34 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     connection = db.connect()
-    connection.execute("SELECT count(*) FROM devices").fetchone()
+    connection.execute("SELECT count(*) FROM children").fetchone()
     connection.close()
     return {"status": "ok"}
 
 
 @app.get("/")
-def index(request: Request, device_id: int | None = None) -> HTMLResponse:
-    user = current_user(request)
+def index(request: Request, child_id: int | None = None) -> HTMLResponse:
+    parent = current_parent(request)
     connection = db.connect()
-    devices = devices_in_family(connection, user.family_id)
-    selected_device = next(
-        (device for device in devices if device["id"] == device_id),
-        devices[0] if devices else None,
+    children = children_in_family(connection, parent.family_id)
+    selected_child = next(
+        (child for child in children if child["id"] == child_id),
+        children[0] if children else None,
     )
-    if selected_device is None:
+    if selected_child is None:
         waiting, status, week = [], None, None
     else:
-        waiting = pending_grants(connection, selected_device["id"])
-        status = last_seen(connection, selected_device["id"])
-        week = last_week(connection, selected_device["id"])
+        waiting = pending_grants(connection, selected_child["id"])
+        status = last_seen(connection, selected_child["id"])
+        week = last_week(connection, selected_child["id"])
     connection.close()
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "user": user,
-            "devices": devices,
-            "selected_device": selected_device,
+            "parent": parent,
+            "children": children,
+            "selected_child": selected_child,
             "pending_grants": waiting,
             "last_seen": status,
             "week": week,
@@ -367,53 +367,53 @@ def logout(request: Request) -> RedirectResponse:
 
 @app.post("/grants")
 async def create_grant(request: Request) -> RedirectResponse:
-    user = current_user(request)
+    parent = current_parent(request)
     form = await request.form()
     try:
-        device_id = int(form["device_id"])
+        child_id = int(form["child_id"])
         seconds = int(form["minutes"]) * 60
     except (KeyError, ValueError):
-        raise HTTPException(status_code=400, detail="device_id and minutes must be whole numbers")
+        raise HTTPException(status_code=400, detail="child_id and minutes must be whole numbers")
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     connection = db.connect()
     try:
-        require_device_in_family(connection, device_id, user.family_id)
+        require_child_in_family(connection, child_id, parent.family_id)
         with connection:
             connection.execute(
-                """INSERT INTO grants (device_id, granted_by, seconds, created_at)
-                   VALUES (:device_id, :granted_by, :seconds, :created_at)""",
+                """INSERT INTO grants (child_id, granted_by, seconds, created_at)
+                   VALUES (:child_id, :granted_by, :seconds, :created_at)""",
                 {
-                    "device_id": device_id,
-                    "granted_by": user.id,
+                    "child_id": child_id,
+                    "granted_by": parent.id,
                     "seconds": seconds,
                     "created_at": created_at,
                 },
             )
     finally:
         connection.close()
-    target = request.url_for("index").include_query_params(device_id=device_id)
+    target = request.url_for("index").include_query_params(child_id=child_id)
     return RedirectResponse(str(target), status_code=303)
 
 
 @app.get("/export/grants")
-def export_grants(request: Request, device_id: int) -> Response:
-    user = current_user(request)
+def export_grants(request: Request, child_id: int) -> Response:
+    parent = current_parent(request)
     connection = db.connect()
     try:
-        device_name = require_device_in_family(connection, device_id, user.family_id)["name"]
+        child_name = require_child_in_family(connection, child_id, parent.family_id)["name"]
         rows = connection.execute(
-            """SELECT grants.id, grants.seconds, grants.created_at, grants.acked_at, users.login
+            """SELECT grants.id, grants.seconds, grants.created_at, grants.acked_at, parents.login
                FROM grants
-               JOIN users ON users.id = grants.granted_by
-               WHERE grants.device_id = :device_id
+               JOIN parents ON parents.id = grants.granted_by
+               WHERE grants.child_id = :child_id
                ORDER BY grants.id""",
-            {"device_id": device_id},
+            {"child_id": child_id},
         ).fetchall()
     finally:
         connection.close()
     zone = DISPLAY_TIMEZONE.key
     return csv_download(
-        filename=export_filename(device_name, "grants"),
+        filename=export_filename(child_name, "grants"),
         header=["id", "minutes", "granted by", f"created ({zone})", f"applied ({zone})"],
         rows=[
             [
@@ -429,24 +429,24 @@ def export_grants(request: Request, device_id: int) -> Response:
 
 
 @app.get("/export/screen-time")
-def export_screen_time(request: Request, device_id: int) -> Response:
-    user = current_user(request)
+def export_screen_time(request: Request, child_id: int) -> Response:
+    parent = current_parent(request)
     connection = db.connect()
     try:
-        device_name = require_device_in_family(connection, device_id, user.family_id)["name"]
+        child_name = require_child_in_family(connection, child_id, parent.family_id)["name"]
         rows = connection.execute(
             """SELECT date, time_spent_sec, carryover_sec, granted_sec, remaining_sec,
                       last_tick, updated_at
                FROM status
-               WHERE device_id = :device_id
+               WHERE child_id = :child_id
                ORDER BY date""",
-            {"device_id": device_id},
+            {"child_id": child_id},
         ).fetchall()
     finally:
         connection.close()
     zone = DISPLAY_TIMEZONE.key
     return csv_download(
-        filename=export_filename(device_name, "screen-time"),
+        filename=export_filename(child_name, "screen-time"),
         header=[
             "date",
             "time_spent_sec",

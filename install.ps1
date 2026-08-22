@@ -17,7 +17,7 @@ $configText = Get-Content -Raw "$src\config.py"
 $enabledUsers = @(Get-LocalUser | Where-Object { $_.Enabled } | ForEach-Object { $_.Name })
 $adminUsers = @()
 try {
-    $adminUsers = @(Get-LocalGroupMember -SID "S-1-5-32-544" | ForEach-Object { ($_.Name -split '\\')[-1] })
+    $adminUsers = @(Get-LocalGroupMember -SID "S-1-5-32-544" | ForEach-Object { ($_.Name -split '\\')[-1] })   # Administrators -- the SID works in every display language
 } catch { }   # an orphaned SID in the group makes this throw; then nothing is filtered out
 $candidates = @($enabledUsers | Where-Object {
     $_ -notin $adminUsers -and $_ -notin @("Guest", "DefaultAccount", "WDAGUtilityAccount")
@@ -39,11 +39,10 @@ $SharedDir = [regex]::Match($configText, 'SHARED_DIR\s*=\s*Path\(r?["'']([^"'']+
 if (-not $SharedDir) { throw "Could not read SHARED_DIR from config.py." }
 $redeemFile = Join-Path $SharedDir "extra_time.txt"   # must match REDEEM_FILE_PATH in config.py
 
-# Both credentials live in files inside the locked data folder, never in
-# config.py, which is tracked in git. Ask for them before anything is installed;
-# they are written further down, once the folder ACL is in place.
+# Both credentials go to files in the locked data folder, never into config.py,
+# which git tracks. Asked for now, written only once the folder ACL is in place.
 $secretFile = "$MonitorDir\data\secret.txt"
-$tokenFile  = "$MonitorDir\data\device_token.txt"
+$tokenFile  = "$MonitorDir\data\child_token.txt"
 $userFile   = "$MonitorDir\data\target_user.txt"
 
 $secretPrompt = "Shared secret for signing extra-time codes, at least 16 hex characters"
@@ -62,18 +61,16 @@ if ($secretHex) {
     $generatedSecret = $secretHex   # printed at the end, for the parent's machine
 }
 
-$tokenPrompt = "Device token from add_device.py on the parent's server"
+$tokenPrompt = "Child token from add_child.py on the parent's server"
 if (Test-Path $tokenFile) {
     $tokenPrompt += " (Enter keeps the current one)"
 } else {
     $tokenPrompt += " (Enter to run without server syncing)"
 }
-$deviceToken = (Read-Host $tokenPrompt).Trim()
+$childToken = (Read-Host $tokenPrompt).Trim()
 
-# Not written to a file like the secret and token: SERVER_URL is a plain
-# variable in config.py, so it's patched into the copy under $MonitorDir
-# below, straight after that file is copied there. Never into $src\config.py,
-# which is tracked in git -- a real hostname doesn't belong in the repo.
+# SERVER_URL is a plain variable in config.py, so it's patched into the copy
+# installed below -- never into $src\config.py, which git tracks.
 $existingServerUrl = ""
 if (Test-Path "$MonitorDir\config.py") {
     $existingServerUrl = [regex]::Match([IO.File]::ReadAllText("$MonitorDir\config.py"), 'SERVER_URL\s*=\s*"([^"]*)"').Groups[1].Value
@@ -85,17 +82,15 @@ $serverUrl = (Read-Host $serverUrlPrompt).Trim()
 if (-not $serverUrl) { $serverUrl = $existingServerUrl }
 
 # Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
-# Must be a machine-wide install under Program Files, not whatever python.exe
-# happens to resolve off the invoking (admin) user's PATH -- a per-user install
-# living under that user's own profile is inaccessible to the child's account,
-# which makes the widget task fail with Access Denied when it tries to launch it.
-$targetDir = "C:\Python311"   # no spaces -- avoids quoting the override string has to survive PowerShell -> winget -> installer
+# Never trust whatever python.exe is on the admin's PATH: a per-user install under
+# that profile is unreadable from the child's account, and the widget task then
+# dies with Access Denied.
+$targetDir = "C:\Python311"   # no spaces: the override string must survive PowerShell -> winget -> installer unquoted
 $python = (Get-ChildItem "C:\Program Files\Python3*\python.exe", "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 if (-not $python) {
-    # --scope machine alone isn't enough: if a per-user install of the same
-    # version already exists (e.g. under the admin's own profile), winget/the
-    # Python installer tries to convert it in place instead of installing
-    # fresh under Program Files. Force an explicit target dir to avoid that.
+    # --scope machine alone isn't enough: if the same version exists per-user,
+    # the installer converts it in place instead of installing fresh under
+    # Program Files; the explicit TargetDir prevents that.
     $override = "/quiet InstallAllUsers=1 PrependPath=0 TargetDir=$targetDir"
     winget install --id Python.Python.3.11 -e --scope machine --accept-package-agreements --accept-source-agreements --override $override
     $python = (Get-ChildItem "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
@@ -109,11 +104,11 @@ New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
 Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
 $copiedConfigPath = "$MonitorDir\config.py"
 [IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
-icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
+icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
 
 # Written only now, so neither credential ever sits in a folder the child can read.
 if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
-if ($deviceToken) { Set-Content -Path $tokenFile  -Value $deviceToken -Encoding ascii -NoNewline }
+if ($childToken) { Set-Content -Path $tokenFile  -Value $childToken -Encoding ascii -NoNewline }
 # UTF-8 without a BOM, unlike the two above: an account name is not always ascii.
 [IO.File]::WriteAllText($userFile, $childUser)
 
@@ -141,7 +136,8 @@ Register-ScheduledTask "ScreenTimeMonitor" -Action $run -Trigger (New-ScheduledT
 # Task 2 -- show the overlay in the child's session when they log in.
 $run = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$SharedDir\remaining_time_widget.py`"" -WorkingDirectory $SharedDir
 $who = New-ScheduledTaskPrincipal -UserId $childUser -LogonType Interactive
-Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Force | Out-Null
+# default task settings would skip the start on battery power
+Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Settings $opts -Force | Out-Null
 
 if ($generatedSecret) {
     Write-Host "`nShared secret, needed by create_code.py on your own machine:" -ForegroundColor Yellow

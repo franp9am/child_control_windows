@@ -20,7 +20,7 @@ For the common case there is now an installer that does every step below for you
 3. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin). It will:
    * install Python 3 machine-wide via winget if it isn't already present,
    * copy `monitor.py`, `remote_sync.py` + `config.py` into `C:\ProgramData\ScreenTime` and lock the folder so the child cannot read it (this is what protects `data\secret.txt`),
-   * ask which local account is the child's, then for the shared secret (Enter generates one) and, optionally, the device token and URL for the parent's server, and write it all into the locked folder,
+   * ask which local account is the child's, then for the shared secret (Enter generates one) and, optionally, the child token and URL for the parent's server, and write it all into the locked folder,
    * copy the overlay widget into `C:\ProgramData\ScreenTimeShared`, the one folder every local account may write in, and put an "Extra time" shortcut on the shared desktop pointing at the redeem file there,
    * register a scheduled task running `monitor.py` as SYSTEM at startup,
    * register a scheduled task running the widget in the child's session at their logon.
@@ -52,7 +52,7 @@ but I didn't test it.
   * `SHUTDOWN_DELAY_SECONDS` -- after system shut down, how many seconds is the grace period (to save things etc)
   * `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED` -- range of hours the computer will be usable, for instance 6 and 20, to exclude night time
   * `SECRET_FILE` -- where the shared secret for signing extra-time codes is read from; the value must match the parent's machine
-  * `SERVER_URL` -- the parent's server for remote grants, empty to run without one; the device token goes in `DEVICE_TOKEN_FILE`
+  * `SERVER_URL` -- the parent's server for remote grants, empty to run without one; the child token goes in `CHILD_TOKEN_FILE`
   * `REDEEM_FILE_PATH` -- the file the child writes a code into; it sits in `SHARED_DIR` and rarely needs changing
   * `DATA_DIR` -- where the per-day json files and the used-code list live
 
@@ -117,7 +117,7 @@ An answer without that key -- which is every answer the server sends today -- ch
 
 An account is two halves that have to agree on the login name:
 
-* a row in the `users` table, which says what family the parent belongs to -- `python server/add_user.py <login> <family>`
+* a row in the `parents` table, which says what family the parent belongs to -- `python server/add_parent.py <login> <family>`
 * a line in `/etc/nginx/htpasswd`, which says how the parent proves that login -- `sudo htpasswd -B -C 10 /etc/nginx/htpasswd <login>`
 
 Run `htpasswd` without `-c` to add a parent; the file holds one line per account and
@@ -131,7 +131,7 @@ factor is a ceiling on how fast anyone can guess as well as on how fast a parent
 loads; 10 is the balance, and much higher turns a flood of wrong passwords into real load.
 
 nginx checks the password and passes the name it verified to the app as `X-Remote-User`;
-`current_user` in `server/app.py` looks that name up to decide which family's devices the
+`current_parent` in `server/app.py` looks that name up to decide which family's children the
 page shows. The header is set from `$remote_user` inside the authenticated location and
 blanked on `/api/` and `/health`, so a client cannot supply its own. The app must never be
 reachable except through the proxy, so start uvicorn on `--host 127.0.0.1` (the default).
@@ -181,7 +181,7 @@ Three things this depends on:
   nginx runs `return` in the rewrite phase, before `auth_basic` in the access phase, so a
   redirect written there answers without ever checking the password -- and a password
   never checked is never cached, which is the whole point.
-* **Never give a parent the login `logout`.** `add_user.py` would let you, and that
+* **Never give a parent the login `logout`.** `add_parent.py` would let you, and that
   account's password would then be public knowledge.
 
 The app refuses to serve `/logout` unless nginx hands it `X-Remote-User: logout`, so a

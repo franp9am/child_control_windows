@@ -16,18 +16,18 @@ def family_id(connection: sqlite3.Connection, family_name: str) -> int:
 
 def main() -> None:
     if len(sys.argv) != 3:
-        sys.exit("usage: python add_user.py <login> <family>")
+        sys.exit("usage: python add_parent.py <login> <family>")
     login, family_name = sys.argv[1], sys.argv[2]
     db.create_schema()
     connection = db.connect()
     try:
         with connection:
             connection.execute(
-                "INSERT INTO users (login, family_id) VALUES (?, ?)",
+                "INSERT INTO parents (login, family_id) VALUES (?, ?)",
                 (login, family_id(connection, family_name)),
             )
     except sqlite3.IntegrityError:
-        sys.exit(f"user {login!r} already exists")
+        sys.exit(f"parent {login!r} already exists")
     finally:
         connection.close()
     print(f"{login} added to family {family_name}")

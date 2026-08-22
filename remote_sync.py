@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from config import (
     APPLIED_GRANTS_FILE,
-    DEVICE_TOKEN_FILE,
+    CHILD_TOKEN_FILE,
     SERVER_URL,
     SYNC_TIMEOUT_SECONDS,
 )
@@ -48,15 +48,15 @@ class SyncAnswer:
     config_overrides: Optional[dict]
 
 
-def load_device_token() -> str:
-    """Identifies this machine to the server; empty string means not set up.
+def load_child_token() -> str:
+    """Identifies which child this monitor reports for; empty means not set up.
 
     Deliberately not the signing secret and not stored in config.py: the server
     keeps a copy of this token, so it must be worthless to whoever holds it --
-    it grants no time, it only names the device.
+    it grants no time, it only names the child.
     """
     try:
-        with open(DEVICE_TOKEN_FILE, "r", encoding="utf-8") as f:
+        with open(CHILD_TOKEN_FILE, "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
