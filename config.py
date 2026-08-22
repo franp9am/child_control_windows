@@ -75,10 +75,23 @@ def get_config() -> dict:
     return settings
 
 
+def value_allowed(name: str, value) -> bool:
+    allowed = SETTINGS[name]["allowed"]
+    if isinstance(allowed, range):
+        # bool is an int subclass: without the exclusion, True would pass as 1
+        return isinstance(value, int) and not isinstance(value, bool) and value in allowed
+    elif isinstance(allowed, tuple):
+        return type(value) is type(allowed[0]) and value in allowed
+    else:
+        # an "allowed" spec this function doesn't handle is a bug in SETTINGS;
+        # dropping the value keeps the monitor ticking
+        return False
+
+
 def save_overrides(sent: dict) -> dict:
     """Store `sent` as the complete override set and return the settings now in force."""
     overrides = {name: value for name, value in sent.items()
-                 if name in SETTINGS and value in SETTINGS[name]["allowed"]}
+                 if name in SETTINGS and value_allowed(name, value)}
     resulting = {**default_settings(), **overrides}
     # an unusable window would shut the machine down before a correction could arrive
     if resulting["EARLIEST_HOUR_INCLUDED"] > resulting["LATEST_HOUR_INCLUDED"]:

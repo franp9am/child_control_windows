@@ -368,7 +368,8 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         # Stored, so they outlive this run and stay in force while the server
         # is unreachable.
         settings = config.save_overrides(answer.config_overrides)
-        data["event_log"].append(f"server config {answer.config_overrides} {now_str}")
+        # log what survived validation, not what was sent -- they differ on a bad value
+        data["event_log"].append(f"server config {config.load_overrides()} {now_str}")
     if answer.pending_grants or already_applied or answer.config_overrides is not None:
         save_data(data, datafile)
         remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])
