@@ -1,5 +1,6 @@
 """
-Use this on parents machine to create a code with extra time for the child
+Use this on parents machine to create a code with extra time for the child.
+Standalone on purpose: copy this single file over, it imports nothing local.
 """
 
 import argparse
@@ -7,15 +8,16 @@ import datetime
 import hashlib
 import hmac
 import os
+from pathlib import Path
 
-from config import SECRET_FILE, SIGNATURE_CHARS, load_secret
+SIGNATURE_CHARS = 4  # must equal SIGNATURE_CHARS in the child's config.py
+SECRET_FILE = Path(__file__).parent / "data" / "secret.txt"
 
-# The secret must equal the one on the child's machine. The CHILD_SECRET env var
-# overrides the secret file if set.
+# The secret must equal the one on the child's machine; CHILD_SECRET wins over the file.
 env_secret = os.environ.get("CHILD_SECRET", "").strip()
 try:
-    secret = bytes.fromhex(env_secret) if env_secret else load_secret()
-except ValueError:
+    secret = bytes.fromhex(env_secret or SECRET_FILE.read_text(encoding="utf-8").strip())
+except (OSError, ValueError):
     secret = b""
 if not secret:
     raise ValueError(

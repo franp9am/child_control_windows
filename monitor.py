@@ -9,30 +9,35 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
+import config
 import remote_sync
 from config import (
-    CARRYOVER,
     CHECK_INTERVAL_SECONDS,
     CRASH_LOG_FILE,
-    DAILY_LIMIT_SECONDS,
     DATA_DIR,
-    EARLIEST_HOUR_INCLUDED,
-    LATEST_HOUR_INCLUDED,
-    MAX_CARRYOVER_SECONDS,
     MAX_REDEEM_FILE_BYTES,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
+    SECRET_FILE,
     SERVER_URL,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
     TARGET_USER,
     USED_CODES_FILE,
-    load_secret,
 )
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_secret() -> bytes:
+    """The key redeem codes are signed with; empty when missing or malformed."""
+    try:
+        return bytes.fromhex(SECRET_FILE.read_text(encoding="utf-8").strip())
+    except Exception:  # runs at import, where nothing would catch a raise
+        return b""
+
 
 SECRET = load_secret()  # empty without a secret file: codes stop being accepted
 
@@ -59,7 +64,7 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
     return DATA_DIR / (max(prev_dates).isoformat() + ".json")
 
 
-def compute_carryover_sec(today: datetime.date) -> int:
+def compute_carryover_sec(today: datetime.date, settings) -> int:
     """Leftover time from the last day with data, plus a full daily limit for
     every calendar day in between that has no data file (machine was off),
     capped at MAX_CARRYOVER_SECONDS."""
@@ -68,13 +73,18 @@ def compute_carryover_sec(today: datetime.date) -> int:
         return 0
     prev_date = datetime.date.fromisoformat(prev_file.stem)
     prev_data = load_data(prev_file)
-    leftover = max(0, remaining_seconds(prev_data))
+    leftover = max(0, remaining_seconds(prev_data, settings))
     missing_days = (today - prev_date).days - 1  # fully skipped days, no file
-    return min(leftover + missing_days * DAILY_LIMIT_SECONDS, MAX_CARRYOVER_SECONDS)
+    return min(
+        leftover + missing_days * settings["DAILY_LIMIT_SECONDS"],
+        settings["MAX_CARRYOVER_SECONDS"],
+    )
 
 
-def is_night_time(now):
-    return not (EARLIEST_HOUR_INCLUDED <= now.hour <= LATEST_HOUR_INCLUDED)
+def is_night_time(now, settings):
+    return not (
+        settings["EARLIEST_HOUR_INCLUDED"] <= now.hour <= settings["LATEST_HOUR_INCLUDED"]
+    )
 
 
 def load_data(datafile):
@@ -121,9 +131,9 @@ def save_used_codes(used_codes):
     os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
 
 
-def remaining_seconds(data):
+def remaining_seconds(data, settings):
     return (
-        DAILY_LIMIT_SECONDS
+        settings["DAILY_LIMIT_SECONDS"]
         + data["carryover_sec"]
         + data["granted_sec"]
         - data["time_spent_sec"]
@@ -302,15 +312,18 @@ def handle_redeem_file():
     }
 
 
-def sync_with_server(data, datafile, now):
-    """Report today's totals to the parent's server and apply the grants it sends
-    back. A server that is down, slow or unreachable simply leaves the local
-    numbers untouched."""
+def sync_with_server(data, datafile, now, settings) -> dict:
+    """Report today's totals to the parent's server, apply the grants it sends
+    back and adopt any settings it sends with them. A server that is down, slow
+    or unreachable simply leaves the local numbers and settings untouched.
+
+    Returns the settings to carry on with, which are the ones passed in unless
+    the server changed them."""
     if not SERVER_URL:
-        return
+        return settings
     token = remote_sync.load_device_token()
     if not token:
-        return
+        return settings
 
     now_str = now.strftime(TIMESTAMP_FORMAT)
     status = remote_sync.DailyStatus(
@@ -318,34 +331,40 @@ def sync_with_server(data, datafile, now):
         time_spent_sec=data["time_spent_sec"],
         carryover_sec=data["carryover_sec"],
         granted_sec=data["granted_sec"],
-        remaining_sec=remaining_seconds(data),
+        remaining_sec=remaining_seconds(data, settings),
         last_tick=data["last_tick"],
     )
     already_applied = remote_sync.load_applied_grant_ids()
     try:
-        grants = remote_sync.request_pending_grants(status, already_applied, token)
+        answer = remote_sync.send_status(status, already_applied, token)
     except Exception:
-        return  # offline is the normal case, not a crash
+        return settings  # offline is the normal case, not a crash
 
     # The server keeps sending a grant until it hears the id back, so applying
     # first and recording afterwards can repeat a grant, never lose one.
-    for grant in grants:
+    for grant in answer.pending_grants:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
         send_message(message=f"extra time {grant.seconds}")
-    if grants or already_applied:
+    if answer.config_overrides:
+        # Stored, so they outlive this run and stay in force while the server
+        # is unreachable.
+        settings = config.save_overrides(answer.config_overrides)
+        data["event_log"].append(f"server config {answer.config_overrides} {now_str}")
+    if answer.pending_grants or already_applied or answer.config_overrides:
         save_data(data, datafile)
-        remote_sync.save_applied_grant_ids([grant.id for grant in grants])
+        remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])
+    return settings
 
 
-def ensure_datafile(datafile, now):
+def ensure_datafile(datafile, now, settings):
     """Create today's datafile if it doesn't exist yet, applying carryover if
     configured; otherwise just load what's already there."""
     if datafile.is_file():
         return load_data(datafile)
     data = load_data(datafile)  # defaults, since the file doesn't exist
-    if CARRYOVER:
-        carryover = compute_carryover_sec(now.date())
+    if settings["CARRYOVER"]:
+        carryover = compute_carryover_sec(now.date(), settings)
         if carryover > 0:
             data["carryover_sec"] = carryover
             now_str = now.strftime(TIMESTAMP_FORMAT)
@@ -375,8 +394,9 @@ def main():
     # stale value from yesterday isn't shown even for the first minute
     try:
         now = datetime.datetime.now()
-        data = ensure_datafile(get_datafile(now), now)
-        write_remaining_time_file(remaining_seconds(data))
+        settings = config.get_config()
+        data = ensure_datafile(get_datafile(now), now, settings)
+        write_remaining_time_file(remaining_seconds(data, settings))
     except Exception:
         log_unexpected_error()
 
@@ -390,12 +410,13 @@ def main():
             now = datetime.datetime.now()
             now_str = now.strftime(TIMESTAMP_FORMAT)
             datafile = get_datafile(now)
-            data = ensure_datafile(datafile, now)
+            settings = config.get_config()
+            data = ensure_datafile(datafile, now, settings)
 
             is_logged_in = user_logged_in()
 
             if is_logged_in:
-                if is_night_time(now):
+                if is_night_time(now, settings):
                     # enforce first; bookkeeping below may fail without
                     # cancelling the shutdown
                     shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
@@ -403,7 +424,7 @@ def main():
                     send_message(message="Night time")
                     data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
-                    sync_with_server(data, datafile, now)
+                    sync_with_server(data, datafile, now, settings)
                     return
 
                 redeem = handle_redeem_file()
@@ -419,9 +440,9 @@ def main():
                         send_message(message=f"extra time {extra_time}")
                         save_data(data, datafile)
 
-                sync_with_server(data, datafile, now)
+                settings = sync_with_server(data, datafile, now, settings)
 
-                if remaining_seconds(data) <= 0:
+                if remaining_seconds(data, settings) <= 0:
                     # enforce first; bookkeeping below may fail without
                     # cancelling the shutdown
                     shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)
@@ -432,18 +453,18 @@ def main():
                     # last word before the process exits: without it the page
                     # keeps yesterday's numbers and the grant that caused this
                     # shutdown stays pending until the next boot
-                    sync_with_server(data, datafile, now)
+                    sync_with_server(data, datafile, now, settings)
                     return
 
                 data["time_spent_sec"] += seconds_to_charge(data, now)
                 data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
                 data["last_tick"] = now_str
                 save_data(data, datafile)
-                write_remaining_time_file(remaining_seconds(data))
+                write_remaining_time_file(remaining_seconds(data, settings))
             else:
                 # Nothing is being spent, but keep publishing: the widget treats
                 # a file that stops being refreshed as "the monitor is gone".
-                write_remaining_time_file(remaining_seconds(data))
+                write_remaining_time_file(remaining_seconds(data, settings))
         except Exception:
             log_unexpected_error()
 

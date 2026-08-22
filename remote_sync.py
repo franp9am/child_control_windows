@@ -1,4 +1,5 @@
-"""Talks to the parent's server: reports today's totals, receives time grants.
+"""Talks to the parent's server: reports today's totals, receives time grants
+and settings.
 
 Nothing here enforces anything -- the monitor keeps counting and shutting the
 machine down whether the server answers or not.
@@ -36,6 +37,15 @@ class Grant:
     seconds: int
 
 
+@dataclass
+class SyncAnswer:
+    """Time grants, plus any settings the server wants this machine to use
+    (config.DEFAULT_SETTINGS names). An empty dict means it said nothing about them."""
+
+    pending_grants: List[Grant]
+    config_overrides: dict
+
+
 def load_device_token() -> str:
     """Identifies this machine to the server; empty string means not set up.
 
@@ -66,11 +76,11 @@ def save_applied_grant_ids(grant_ids):
     os.replace(tmp_file, APPLIED_GRANTS_FILE)  # make the write atomic
 
 
-def request_pending_grants(
+def send_status(
     status: DailyStatus, applied_grant_ids: List[int], token: str
-) -> List[Grant]:
+) -> SyncAnswer:
     """Send today's totals plus the grant ids already applied (which acknowledges
-    them), and return the grants the server still considers unapplied.
+    them), and return what the server answers.
 
     Raises on any network, HTTP or protocol problem -- the caller decides.
     """
@@ -87,7 +97,11 @@ def request_pending_grants(
     )
     with urllib.request.urlopen(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
         answer = json.load(response)
-    return [
-        Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
-        for grant in answer["pending_grants"]
-    ]
+    config_overrides = answer.get("config", {})
+    return SyncAnswer(
+        pending_grants=[
+            Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
+            for grant in answer["pending_grants"]
+        ],
+        config_overrides=config_overrides if isinstance(config_overrides, dict) else {},
+    )

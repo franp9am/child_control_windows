@@ -50,7 +50,7 @@ schtasks /create /tn "ScreenTimeMonitor" ^
 /sc onstart /ru SYSTEM /rl HIGHEST /f
 ``` 
 but I didn't test it.
-* Edit `config.py`, which sits next to the scripts and holds every setting. Nothing has to be changed in monitor.py itself. The variables you will care about:
+* Edit `config.py`, which sits next to the scripts and holds every setting. Nothing has to be changed in monitor.py itself. The ones you will care about (the five the server can also change are entries of `DEFAULT_SETTINGS`, the rest are plain variables):
   * `TARGET_USER` -- child's windows account
   * `DAILY_LIMIT_SECONDS` -- how many seconds per day is the maximal screentime
   * `CARRYOVER` -- if `True`, unused time (including unused extra time from redeemed codes) rolls over to the next day; if `False`, each day starts fresh at `DAILY_LIMIT_SECONDS` and a redeemed code only grants extra time for the day it's redeemed
@@ -61,7 +61,7 @@ but I didn't test it.
   * `REDEEM_FILE_PATH` -- path to a local file the children can access, to write a code in case you grant him extra time
   * `DATA_DIR` -- where the per-day json files and the used-code list live
 
-  The rest (poll intervals, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
+  Five of them can also be changed from the server; see below. The rest (poll intervals, the redeem signature length) rarely needs touching. It is ordinary python, so keep the quotes and the `r"..."` prefixes on the windows paths intact -- a syntax error there stops monitor.py from starting.
 
 
 ## Remaining time overlay
@@ -94,9 +94,28 @@ A typical code can look like 2026-07-23:3600:a184 which would grant an extra hou
 
 The child writes this code to the file specified in monitor.py text document.
 
-To generate the codes, the parent can run the create_code.py script on his machine.
-Both machines share a secret password (`data/secret.txt` on each machine, or the `CHILD_SECRET` env var on the parent's) which should not be shared with the child.
+To generate the codes, the parent can run the create_code.py script on his machine. It imports nothing from the rest of the project, so copying that one file over is enough -- but its `SIGNATURE_CHARS` has to keep matching the one in the child's `config.py`, or every code is rejected.
+Both machines share a secret password (`data/secret.txt` next to the script on each machine, or the `CHILD_SECRET` env var on the parent's) which should not be shared with the child.
 
+
+## Settings from the server
+
+The server can change the five settings in the `DEFAULT_SETTINGS` dict in `config.py`: `DAILY_LIMIT_SECONDS`, `CARRYOVER`, `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED`. The `ALLOWED_VALUES` dict right below it states what each one may be set to. Nothing else can be reached that way: the values arrive over the network, so the paths that hold the signing secret, and `SERVER_URL` itself, stay under local control only.
+
+They ride along in the answer to a sync, next to the grants, under a `config` key and with the names `config.py` uses:
+
+```json
+{"pending_grants": [{"id": 7, "seconds": 600}],
+ "config": {"LATEST_HOUR_INCLUDED": 22, "CARRYOVER": false}}
+```
+
+An answer without that key -- which is every answer the server sends today -- changes nothing. The client is ready for it either way.
+
+* Only the settings actually named are changed; the others keep what they had, so the server can send one without restating the rest.
+* What arrives is stored in `data/override_config.json` and wins over `config.py`. That file is what puts the settings in force, so they survive reboots and keep applying while the server is unreachable. It belongs to the monitor -- change these settings from the server or in `config.py`, not by editing it; deleting the whole file is the one safe manual move, and goes back to the `config.py` values.
+* A new value applies from the next tick, without restarting the monitor, and is written to the day's `event_log`.
+* Values outside the range in `ALLOWED_VALUES`, and names not in it, are ignored rather than enforced.
+* Hours that would leave no usable window at all are refused when they arrive, and the ones already in force stay: the machine would otherwise shut down every minute and never stay up long enough to receive a correction. So send **both** hours together when moving the window past the hours already set -- sending one at a time works only while each step leaves a usable window.
 
 ## Server accounts
 
@@ -191,6 +210,13 @@ Scenario by scenario, as the code behaves today. Times assume the default config
 
 * **Child enters a valid code.** The time is added the same minute, once ever -- the code lands in `used_redeem_codes.json` and never works again, on any day.
 * **Unused code time at midnight.** It is part of the day's remainder, so it carries over like any other unused time (same cap).
+
+### Server settings
+
+* **Parent changes the daily limit while the machine is on.** In force within about a minute, for today as well: if the new limit is below what the child already spent, the machine shuts down on the next tick. Time already banked as carryover for today is not recomputed.
+* **Parent changes a setting while the machine is off.** It arrives on the next sync after the machine comes back, like a grant.
+* **Server is down or unreachable.** The settings it sent last keep applying; the machine never reverts to `config.py` on its own.
+* **Parent sends a value the client rejects.** It is dropped and the previous value stays, so the machine keeps running on settings that work rather than on the typo. The rest of the same answer still applies.
 
 ### Server grants
 

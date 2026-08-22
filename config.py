@@ -1,3 +1,5 @@
+import json
+import os
 from pathlib import Path
 
 TARGET_USER = "elias"  # as it shows up in `query user`
@@ -5,8 +7,7 @@ TARGET_USER = "elias"  # as it shows up in `query user`
 # The child writes redeem codes into this one, so it lives in their own profile.
 REDEEM_FILE_PATH = Path(r"C:\Users\Elias\Desktop\extra_time.txt")
 
-# Published for remaining_time_widget.py. install.ps1 leaves this folder readable
-# by everyone but writable only by SYSTEM, so the child cannot fake the display.
+# Published for remaining_time_widget.py; install.ps1 leaves it writable by SYSTEM only.
 REMAINING_TIME_FILE_PATH = Path(r"C:\ProgramData\ScreenTimeWidget\remaining_time.txt")
 
 # Not visible from the child's account.
@@ -14,43 +15,75 @@ DATA_DIR = Path(__file__).parent / "data"
 USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
 CRASH_LOG_FILE = DATA_DIR / "crash.log"
 
-# Shared secret (hex) for signing redeem codes, at least 8 bytes = 16 hex
-# characters. It is kept out of this file, which is tracked in git; the
-# installer asks for the value and writes it. The parent's machine needs the
-# same secret, either in that file or in the CHILD_SECRET env var.
+# Hex, 8 bytes or more, written by the installer; the parent's machine needs the same one.
 SECRET_FILE = DATA_DIR / "secret.txt"
 
-# Parent's server, e.g. "https://screentime.example.com". Empty disables all
-# remote syncing; the machine then runs purely on the local limit and the
-# signed redeem codes.
+# The parent's server, e.g. "https://screentime.example.com"; empty disables all syncing.
 SERVER_URL = ""
 DEVICE_TOKEN_FILE = DATA_DIR / "device_token.txt"  # from add_device.py on the server
 APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
 SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 
-CARRYOVER = True  # if False, leftover/unused time never rolls to the next day
-# and redeemed codes only count for the day they're redeemed on.
-
-DAILY_LIMIT_SECONDS = 60 * 60
-# Ceiling on what a fresh day can inherit, so a machine left off for a fortnight
-# doesn't hand over a fortnight's worth of screen time.
-MAX_CARRYOVER_SECONDS = 5 * 60 * 60  # at most 5 hours to carry over
 CHECK_INTERVAL_SECONDS = 60
 SHUTDOWN_DELAY_SECONDS = 300  # grace period once the time is up
 NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
 STARTUP_DELAY_SECONDS = 60  # wait after boot before the first check
 
-EARLIEST_HOUR_INCLUDED = 6
-LATEST_HOUR_INCLUDED = 20
+# The server may change these too, so read them through get_config(), never as config.NAME.
+DEFAULT_SETTINGS = {
+    "DAILY_LIMIT_SECONDS": 60 * 60,
+    # if False, nothing rolls over and a redeemed code counts only for that day
+    "CARRYOVER": True,
+    # ceiling on what a fresh day inherits, so a month off is not a month of screen time
+    "MAX_CARRYOVER_SECONDS": 5 * 60 * 60,
+    "EARLIEST_HOUR_INCLUDED": 6,
+    "LATEST_HOUR_INCLUDED": 20,
+}
+OVERRIDE_FILE = DATA_DIR / "override_config.json"
+
+# What the server may set each of them to; the paths above and SERVER_URL stay local.
+ALLOWED_VALUES = {
+    "DAILY_LIMIT_SECONDS": range(24 * 60 * 60 + 1),
+    "CARRYOVER": (True, False),
+    "MAX_CARRYOVER_SECONDS": range(7 * 24 * 60 * 60 + 1),
+    "EARLIEST_HOUR_INCLUDED": range(24),
+    "LATEST_HOUR_INCLUDED": range(24),
+}
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
 
 
-def load_secret() -> bytes:
-    """The key redeem codes are signed with; empty when missing or malformed."""
+def load_overrides() -> dict:
     try:
-        with open(SECRET_FILE, "r", encoding="utf-8") as f:
-            return bytes.fromhex(f.read().strip())
-    except Exception:
-        return b""
+        stored = json.loads(OVERRIDE_FILE.read_text(encoding="utf-8"))
+    except Exception:  # whatever the file holds, the monitor's tick must go on
+        return {}
+    return stored if isinstance(stored, dict) else {}
+
+
+def get_config() -> dict:
+    """The settings in force: DEFAULT_SETTINGS, with the override file on top."""
+    settings = dict(DEFAULT_SETTINGS)
+    settings.update(load_overrides())
+    return settings
+
+
+def save_overrides(sent: dict) -> dict:
+    """Store what the server sent and return the settings now in force."""
+    in_force = get_config()
+    update = {name: value for name, value in sent.items()
+              if name in ALLOWED_VALUES and value in ALLOWED_VALUES[name]}
+    earliest = update.get("EARLIEST_HOUR_INCLUDED", in_force["EARLIEST_HOUR_INCLUDED"])
+    latest = update.get("LATEST_HOUR_INCLUDED", in_force["LATEST_HOUR_INCLUDED"])
+    # an unusable window would shut the machine down before a correction could arrive
+    if earliest > latest:
+        update.pop("EARLIEST_HOUR_INCLUDED", None)
+        update.pop("LATEST_HOUR_INCLUDED", None)
+
+    overrides = load_overrides()
+    overrides.update(update)
+    tmp_file = OVERRIDE_FILE.with_suffix(".tmp")
+    tmp_file.write_text(json.dumps(overrides, indent=2), encoding="utf-8")
+    os.replace(tmp_file, OVERRIDE_FILE)  # atomic
+    return get_config()
