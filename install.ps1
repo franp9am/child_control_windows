@@ -116,6 +116,9 @@ Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir
 $copiedConfigPath = "$MonitorDir\config.py"
 [IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
+# icacls signals failure only through its exit code, which $ErrorActionPreference
+# does not catch -- unchecked, the secret below lands in a folder the child can read.
+if ($LASTEXITCODE -ne 0) { throw "Could not lock $MonitorDir; data\secret.txt would be readable by the child." }
 
 # Written only now, so neither credential ever sits in a folder the child can read.
 if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
