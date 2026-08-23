@@ -8,6 +8,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Start-Process powershell "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     return
 }
+
+# This window closes the moment the script ends, taking any error message with it.
+trap { Write-Host "`n$_" -ForegroundColor Red; Read-Host "Press Enter to close" | Out-Null; exit 1 }
+
 $src = $PSScriptRoot
 
 $configText = Get-Content -Raw "$src\config.py"
@@ -159,3 +163,4 @@ if ($generatedSecret) {
     Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET)"
 }
 Write-Host "`nDone. Monitor starts after a reboot; the widget appears when $childUser logs in."
+Read-Host "`nPress Enter to close" | Out-Null
