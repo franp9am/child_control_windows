@@ -414,8 +414,12 @@ def main():
     # stale value from yesterday isn't shown even for the first minute
     try:
         now = datetime.datetime.now()
+        datafile = get_datafile(now)
         settings = config.get_config()
-        data = ensure_datafile(get_datafile(now), now, settings)
+        data = ensure_datafile(datafile, now, settings)
+        # Sync before the delay too, so a grant made during the shutdown grace
+        # period shows up right after the reboot instead of a minute later.
+        settings = sync_with_server(data, datafile, now, settings)
         write_remaining_time_file(remaining_seconds(data, settings))
     except Exception:
         log_unexpected_error()
