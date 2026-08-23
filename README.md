@@ -97,3 +97,8 @@ answer, but the server does not send one yet: today it only grants time.
 ## Python dependencies
 
 None on the child's machine. The server has its own, in `server/pyproject.toml`.
+
+## License
+
+Copyright (c) 2026 Peter Franek. MIT License -- see `LICENSE`.
+Use it, change it, sell it; just keep the copyright notice.
