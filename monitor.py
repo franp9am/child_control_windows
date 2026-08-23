@@ -214,14 +214,11 @@ def user_logged_in(user=TARGET_USER):
 
 
 def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
-    # Force close apps and power off; add a small delay if you want a warning.
-    args = ["shutdown", "/s", "/f", "/t", str(int(shutdown_delay_seconds))]
-    try:
-        subprocess.run(
-            args, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        )
-    except Exception:
-        pass
+    """Force close apps and power off; the undelayed repeat defeats `shutdown /a`."""
+    for delay in (int(shutdown_delay_seconds), 0):
+        args = ["shutdown", "/s", "/f", "/t", str(delay)]
+        subprocess.run(args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        time.sleep(delay + 10)
 
 
 def send_message(message, user=TARGET_USER):
@@ -445,15 +442,15 @@ def main():
 
             if is_logged_in:
                 if is_night_time(now, settings):
-                    # enforce first; bookkeeping below may fail without
-                    # cancelling the shutdown
-                    shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
                     write_remaining_time_file(0)
                     send_message(message="Night time")
                     data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
                     sync_with_server(data, datafile, now, settings)
-                    return
+                    # last, because it blocks until the machine goes down; a
+                    # failure above only costs this tick, the next one retries
+                    shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
+                    continue
 
                 redeem = handle_redeem_file()
                 if redeem and redeem["status"] == "valid":
@@ -471,18 +468,18 @@ def main():
                 settings = sync_with_server(data, datafile, now, settings)
 
                 if remaining_seconds(data, settings) <= 0:
-                    # enforce first; bookkeeping below may fail without
-                    # cancelling the shutdown
-                    shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS)
                     write_remaining_time_file(0)
                     send_message(message="time up")
                     data["event_log"].append(f"time up {now_str}")
                     save_data(data, datafile)
-                    # last word before the process exits: without it the page
+                    # last word before the machine goes down: without it the page
                     # keeps yesterday's numbers and the grant that caused this
                     # shutdown stays pending until the next boot
                     sync_with_server(data, datafile, now, settings)
-                    return
+                    # last, because it blocks until the machine goes down; a
+                    # failure above only costs this tick, the next one retries
+                    shutdown_machine(SHUTDOWN_DELAY_SECONDS)
+                    continue
 
                 data["time_spent_sec"] += seconds_to_charge(data, now)
                 data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
@@ -495,8 +492,10 @@ def main():
                 write_remaining_time_file(remaining_seconds(data, settings))
         except Exception:
             log_unexpected_error()
-
-        time.sleep(CHECK_INTERVAL_SECONDS)
+        finally:
+            # in a finally so the branches above can `continue` without
+            # turning the loop into a busy one
+            time.sleep(CHECK_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

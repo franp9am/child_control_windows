@@ -8,6 +8,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Start-Process powershell "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     return
 }
+
+# This window closes the moment the script ends, taking any error message with it.
+trap { Write-Host "`n$_" -ForegroundColor Red; Read-Host "Press Enter to close" | Out-Null; exit 1 }
+
 $src = $PSScriptRoot
 
 $configText = Get-Content -Raw "$src\config.py"
@@ -116,6 +120,9 @@ Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir
 $copiedConfigPath = "$MonitorDir\config.py"
 [IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
+# icacls signals failure only through its exit code, which $ErrorActionPreference
+# does not catch -- unchecked, the secret below lands in a folder the child can read.
+if ($LASTEXITCODE -ne 0) { throw "Could not lock $MonitorDir; data\secret.txt would be readable by the child." }
 
 # Written only now, so neither credential ever sits in a folder the child can read.
 if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
@@ -156,3 +163,4 @@ if ($generatedSecret) {
     Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET)"
 }
 Write-Host "`nDone. Monitor starts after a reboot; the widget appears when $childUser logs in."
+Read-Host "`nPress Enter to close" | Out-Null
