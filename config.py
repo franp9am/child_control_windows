@@ -23,9 +23,10 @@ APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
 SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 
 CHECK_INTERVAL_SECONDS = 60
-SHUTDOWN_DELAY_SECONDS = 300  # grace period once the time is up
-NIGHT_SHUTDOWN_DELAY_SECONDS = 10  # grace period outside the allowed hours
-STARTUP_DELAY_SECONDS = 60  # wait after boot before the first check
+SHUTDOWN_DELAY_SECONDS = 180  # grace period once the time is up
+NIGHT_SHUTDOWN_DELAY_SECONDS = 120  # grace period outside the allowed hours
+STARTUP_DELAY_SECONDS = 40  # wait after boot before the first check
+NETWORK_WARMUP_SECONDS = 20
 
 # Read these through get_config(), never directly: the OVERRIDE_FILE may override them.
 SETTINGS = {

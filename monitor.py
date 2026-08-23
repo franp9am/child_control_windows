@@ -16,6 +16,7 @@ from config import (
     CRASH_LOG_FILE,
     DATA_DIR,
     MAX_REDEEM_FILE_BYTES,
+    NETWORK_WARMUP_SECONDS,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
@@ -410,21 +411,22 @@ def seconds_to_charge(data, now):
 
 
 def main():
-    # publish the remaining time immediately, before the startup delay, so a
-    # stale value from yesterday isn't shown even for the first minute
+    time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
+
+    # Sync and publish well before the first check, so a grant made during the
+    # shutdown grace period shows up right after the reboot, not a minute later.
     try:
         now = datetime.datetime.now()
         datafile = get_datafile(now)
         settings = config.get_config()
         data = ensure_datafile(datafile, now, settings)
-        # Sync before the delay too, so a grant made during the shutdown grace
-        # period shows up right after the reboot instead of a minute later.
         settings = sync_with_server(data, datafile, now, settings)
         write_remaining_time_file(remaining_seconds(data, settings))
     except Exception:
         log_unexpected_error()
 
-    time.sleep(STARTUP_DELAY_SECONDS)  # wait for the redeem file to be created
+    # the rest of the delay, waiting for the redeem file to be created
+    time.sleep(max(0, STARTUP_DELAY_SECONDS - NETWORK_WARMUP_SECONDS))
 
     while True:
         # A transient failure (locked file, redeem file vanishing mid-check,
