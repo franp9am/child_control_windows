@@ -85,18 +85,29 @@ if (-not $serverUrl) { $serverUrl = $existingServerUrl }
 # Never trust whatever python.exe is on the admin's PATH: a per-user install under
 # that profile is unreadable from the child's account, and the widget task then
 # dies with Access Denied.
-$targetDir = "C:\Python311"   # no spaces: the override string must survive PowerShell -> winget -> installer unquoted
-$python = (Get-ChildItem "C:\Program Files\Python3*\python.exe", "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+$targetDir = "C:\Program Files\Python311"
+# C:\Python3* is where older runs of this script installed. Kept in the search so
+# those machines are found and hardened below rather than given a second Python.
+$python = (Get-ChildItem "C:\Program Files\Python3*\python.exe", "C:\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 if (-not $python) {
     # --scope machine alone isn't enough: if the same version exists per-user,
     # the installer converts it in place instead of installing fresh under
     # Program Files; the explicit TargetDir prevents that.
-    $override = "/quiet InstallAllUsers=1 PrependPath=0 TargetDir=$targetDir"
+    # The \" is what carries the space in the path through PowerShell -> winget -> installer.
+    $override = '/quiet InstallAllUsers=1 PrependPath=0 TargetDir=\"' + $targetDir + '\"'
     winget install --id Python.Python.3.11 -e --scope machine --accept-package-agreements --accept-source-agreements --override $override
     $python = (Get-ChildItem "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 }
 if (-not $python) { throw "Could not find or install a machine-wide Python under C:\Program Files." }
-$pythonw = Join-Path (Split-Path $python) pythonw.exe   # windowless twin, for the widget
+$pythonDir = Split-Path $python
+
+# monitor.py runs as SYSTEM on this interpreter, so the child must not be able to
+# write into it: a sitecustomize.py or .pth planted in Lib\site-packages would run
+# as SYSTEM at every boot. Program Files already forbids that, but a folder at the
+# root of C:\ inherits an ACE that lets any user create files inside it.
+icacls $pythonDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # SYSTEM, Administrators, BUILTIN\Users read-only
+
+$pythonw = Join-Path $pythonDir pythonw.exe   # windowless twin, for the widget
 
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
 # That lock is what stops the child reading data\secret.txt and forging codes.
