@@ -224,10 +224,13 @@ def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
         pass
 
 
-def send_message(message):
+def send_message(message, user=TARGET_USER):
     """May only work on windows Pro"""
     try:
-        subprocess.run(["msg", "*", message])
+        subprocess.run(
+            ["msg", user, message],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
     except Exception:
         # not critical
         pass
@@ -413,14 +416,13 @@ def seconds_to_charge(data, now):
 def main():
     time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
 
-    # Sync and publish well before the first check, so a grant made during the
-    # shutdown grace period shows up right after the reboot, not a minute later.
     try:
         now = datetime.datetime.now()
         datafile = get_datafile(now)
         settings = config.get_config()
         data = ensure_datafile(datafile, now, settings)
-        settings = sync_with_server(data, datafile, now, settings)
+        if user_logged_in():
+            settings = sync_with_server(data, datafile, now, settings)
         write_remaining_time_file(remaining_seconds(data, settings))
     except Exception:
         log_unexpected_error()
