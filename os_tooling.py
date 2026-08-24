@@ -91,18 +91,6 @@ def users_at_screen() -> dict[int, str]:
     return {id_: user for id_, (user, at_screen) in _sessions().items() if at_screen}
 
 
-def user_state(user: str) -> tuple:
-    """Whether that user is logged in at all, and whether they are at an unlocked
-    screen. A check that cannot answer says yes to both: it must neither hand out
-    unlimited time nor let a locked machine skip the night shutdown."""
-    try:
-        sessions = _sessions().values()
-    except OSError:
-        return True, True
-    mine = [at_screen for name, at_screen in sessions if name.lower() == user.lower()]
-    return bool(mine), any(mine)
-
-
 def notify(message: str, user: str) -> None:
     title = "Screen time"
     clicked_button = wintypes.DWORD()
