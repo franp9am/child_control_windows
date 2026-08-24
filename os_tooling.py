@@ -5,11 +5,13 @@ import ctypes
 import subprocess
 import time
 from ctypes import wintypes
+from typing import Optional
 
 WTS_CURRENT_SERVER = None  # the C macro is a null handle, and ctypes passes None as one
 WTS_SESSION_INFO_EX = 25  # the info class that carries the lock state
 WTS_ACTIVE = 0  # a disconnected session is nobody sitting at the screen
-WTS_UNLOCKED = 1  # the session flags; reversed on windows 7 and server 2008 R2
+WTS_LOCKED = 0  # the one session flag that means locked; reversed on windows 7
+SESSION_GONE = (2, 7022)  # ERROR_FILE_NOT_FOUND, ERROR_CTX_WINSTATION_NOT_FOUND
 MESSAGE_BOX_OK = 0
 NO_TIMEOUT = 0
 WAIT_FOR_CLICK = False
@@ -49,38 +51,56 @@ def _session_ids() -> list[int]:
         _wtsapi32.WTSFreeMemory(entries)
 
 
-def _unlocked_session_user(session_id: int) -> str:
-    """Empty when that session is locked, disconnected or has nobody logged in.
-    Raises when windows will not answer, which must never read as an empty name."""
+def _session_user(session_id: int) -> Optional[tuple]:
+    """The user of that session and whether they are at an unlocked screen; the
+    name is empty where nobody is logged in. None when the session ended between
+    the enumeration and this call, which is ordinary at logoff. Raises when
+    windows will not answer, which must never read as a screen nobody is at."""
     detail, size = ctypes.POINTER(SessionDetail)(), wintypes.DWORD()
     if not _wtsapi32.WTSQuerySessionInformationW(WTS_CURRENT_SERVER, session_id,
                                                  WTS_SESSION_INFO_EX,
                                                  ctypes.byref(detail), ctypes.byref(size)):
-        raise ctypes.WinError(ctypes.get_last_error())
+        error = ctypes.get_last_error()
+        if error in SESSION_GONE:
+            return None
+        raise ctypes.WinError(error)
     try:
-        at_screen = detail.contents.state == WTS_ACTIVE and detail.contents.flags == WTS_UNLOCKED
-        return detail.contents.user if at_screen else ""
+        session = detail.contents
+        # Only an explicit lock counts as locked. Windows answers
+        # WTS_SESSIONSTATE_UNKNOWN (-1) for sessions it holds no state for, and
+        # reading that as a locked screen would hand out unlimited time.
+        return session.user, session.state == WTS_ACTIVE and session.flags != WTS_LOCKED
     finally:
         _wtsapi32.WTSFreeMemory(detail)
 
 
-def users_at_screen() -> dict[int, str]:
-    """Session id to user, for everyone logged in with the screen unlocked."""
+def _sessions() -> dict[int, tuple]:
+    """Session id to (user, at screen) for every session somebody is logged in to."""
     if _wtsapi32 is None:
         raise OSError("wtsapi32 exists only on windows")
-    users = {}
+    sessions = {}
     for session_id in _session_ids():
-        user = _unlocked_session_user(session_id)
-        if user:
-            users[session_id] = user
-    return users
+        answer = _session_user(session_id)
+        if answer is not None and answer[0]:
+            sessions[session_id] = answer
+    return sessions
 
 
-def user_at_screen(user: str) -> bool:
+def users_at_screen() -> dict[int, str]:
+    """Session id to user, for everyone logged in with the screen unlocked."""
+    return {id_: user for id_, (user, at_screen) in _sessions().items() if at_screen}
+
+
+def user_state(user: str) -> tuple:
+    """Whether that user is logged in at all, and whether they are at an unlocked
+    screen. A check that cannot answer says yes to both: it must neither hand out
+    unlimited time nor let a locked machine skip the night shutdown."""
     try:
-        return any(name.lower() == user.lower() for name in users_at_screen().values())
+        sessions = _sessions().values()
     except OSError:
-        return True  # a check that cannot answer must not hand out unlimited time
+        return True, True
+    mine = [at_screen for name, at_screen in sessions if name.lower() == user.lower()]
+    return bool(mine), any(mine)
 
 
 def notify(message: str, user: str) -> None:
