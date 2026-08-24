@@ -1,6 +1,3 @@
-"""Windows session queries via wtsapi32, which ships on every edition, unlike
-the `query` and `msg` executables these calls replace."""
-
 import ctypes
 import subprocess
 import time
