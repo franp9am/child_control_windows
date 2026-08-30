@@ -68,7 +68,7 @@ class LastSeenView:
 
 @dataclass
 class SettingsView:
-    in_force: str
+    lines: list[str]  # one per setting, stacked in the cell
     waiting_since: str | None  # when a parent asked for something the child has yet to confirm
 
 
@@ -187,20 +187,21 @@ def wanted_settings(connection: sqlite3.Connection, child_id: int) -> sqlite3.Ro
     ).fetchone()
 
 
-def settings_in_words(settings: dict) -> str:
-    """The settings the child reports, on one line."""
-    carryover = (
-        f"carryover ≤{compact_duration(settings['MAX_CARRYOVER_SECONDS'])}"
-        if settings["CARRYOVER"]
-        else "no carryover"
-    )
+def settings_in_words(settings: dict) -> list[str]:
+    """The settings the child reports, a line each: how long, when, what rolls over."""
     # the last allowed hour is included in full, so the machine goes down when it ends
     until = settings["LATEST_HOUR_INCLUDED"] + 1
-    return (
-        f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/day"
-        f" · {settings['EARLIEST_HOUR_INCLUDED']:02d}:00–{until:02d}:00"
-        f" · {carryover}"
+    # non-breaking space so a narrow screen never splits a value from its label
+    carryover = (
+        f"carryover\u00a0≤{compact_duration(settings['MAX_CARRYOVER_SECONDS'])}"
+        if settings["CARRYOVER"]
+        else "no\u00a0carryover"
     )
+    return [
+        f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}\u00a0per\u00a0day",
+        f"{settings['EARLIEST_HOUR_INCLUDED']:02d}:00–{until:02d}:00",
+        carryover,
+    ]
 
 
 def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView | None:
@@ -214,12 +215,12 @@ def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView
     if row is None:
         return None
     if row["reported_settings"] is None:
-        return SettingsView(in_force="not reported by this monitor", waiting_since=None)
+        return SettingsView(lines=["not reported by this monitor"], waiting_since=None)
     reported = json.loads(row["reported_settings"])
     wanted = wanted_settings(connection, child_id)
     unconfirmed = wanted is not None and json.loads(wanted["settings"]) != reported
     return SettingsView(
-        in_force=settings_in_words(reported),
+        lines=settings_in_words(reported),
         waiting_since=formatted_local_time(wanted["created_at"]) if unconfirmed else None,
     )
 

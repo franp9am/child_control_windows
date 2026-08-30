@@ -66,6 +66,7 @@
   .status td { text-align: right; }
   .status tr:last-child th, .status tr:last-child td { border-bottom: none; }
   .never { margin: 0; font-size: .9rem; color: #888; }
+  .status .setting { display: block; }
   .status .waiting {
     display: block; margin-top: .2rem; font-size: .82rem;
     color: #a3170c;
@@ -177,7 +178,10 @@
           {% if settings %}
           <tr>
             <th>Settings</th>
-            <td>{{ settings.in_force }}
+            <td>
+              {% for line in settings.lines %}
+              <span class="setting">{{ line }}</span>
+              {% endfor %}
               {% if settings.waiting_since %}
               <span class="waiting">new ones waiting since {{ settings.waiting_since }}</span>
               {% endif %}
