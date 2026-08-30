@@ -18,7 +18,8 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 ## Setup on the child's machine
 
 1. Give the child a **non-admin** Windows account.
-2. Right-click `install.ps1` -> **Run with PowerShell** (it re-launches itself as admin).
+2. Double-click `install.cmd`, or right-click `install.ps1` -> **Run with PowerShell**
+   (either way it re-launches itself as admin).
    It asks which local account is the child's, for the shared secret (Enter generates
    one), and optionally for the child token and URL of the parent's server. Then it
    installs Python via winget if needed, copies the monitor into `C:\ProgramData\ScreenTime`
@@ -29,7 +30,12 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 If the installer generated the secret, it prints it at the end -- the parent's machine
 needs the same one, in `data/secret.txt` next to `create_code.py` or in `CHILD_SECRET`.
 
-`uninstall.ps1` removes everything (`-KeepData` keeps the usage history).
+`uninstall.cmd` removes everything (pass `-KeepData` to keep the usage history).
+
+The two `.cmd` files only hand the matching `.ps1` to PowerShell with
+`-ExecutionPolicy Bypass`, which is what lets them run on a machine whose default
+policy refuses scripts. They change no setting; without them, running `.\install.ps1`
+from a prompt fails with "running scripts is disabled on this system".
 
 Upgrading by copying the scripts over is not enough: the monitor refuses to start without
 `data\target_user.txt`, which only the installer writes. Run the installer again.
