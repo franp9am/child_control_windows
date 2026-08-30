@@ -32,13 +32,13 @@ CREATE TABLE IF NOT EXISTS grants (
     created_at TEXT NOT NULL,
     acked_at TEXT
 );
--- `overrides` is the complete override set the parent wants in force, as JSON,
--- never a delta; the newest row for a child is the one that counts.
-CREATE TABLE IF NOT EXISTS config_changes (
+-- `settings` is every setting the parent wants in force, as JSON, never a
+-- subset; the newest row for a child is the one that counts.
+CREATE TABLE IF NOT EXISTS settings_changes (
     id INTEGER PRIMARY KEY,
     child_id INTEGER NOT NULL REFERENCES children(id),
     changed_by INTEGER NOT NULL REFERENCES parents(id),
-    overrides TEXT NOT NULL,
+    settings TEXT NOT NULL,
     created_at TEXT NOT NULL,
     acked_at TEXT
 );
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS status (
     remaining_sec INTEGER NOT NULL,
     last_tick TEXT,
     updated_at TEXT NOT NULL,
-    reported_overrides TEXT,
+    reported_settings TEXT,
     PRIMARY KEY (child_id, date)
 );
 """

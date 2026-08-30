@@ -29,8 +29,8 @@ class DailyStatus:
     granted_sec: int
     remaining_sec: int
     last_tick: Optional[str]
-    # the override set in force, so the server can resend its config until this matches
-    config_overrides: dict
+    # the settings in force, so the server can resend its own until this matches
+    settings: dict
 
 
 @dataclass
@@ -41,11 +41,11 @@ class Grant:
 
 @dataclass
 class SyncAnswer:
-    """Time grants, plus the complete set of overrides the server wants in force
-    (config.SETTINGS names). None means it said nothing about them."""
+    """Time grants, plus every setting the server wants in force (config.SETTINGS
+    names). None means it said nothing about them."""
 
     pending_grants: List[Grant]
-    config_overrides: Optional[dict]
+    settings: Optional[dict]
 
 
 def load_child_token() -> str:
@@ -99,11 +99,11 @@ def send_status(
     )
     with urllib.request.urlopen(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
         answer = json.load(response)
-    config_overrides = answer.get("config_overrides")
+    settings = answer.get("settings")
     return SyncAnswer(
         pending_grants=[
             Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
             for grant in answer["pending_grants"]
         ],
-        config_overrides=config_overrides if isinstance(config_overrides, dict) else None,
+        settings=settings if isinstance(settings, dict) else None,
     )

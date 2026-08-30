@@ -49,15 +49,18 @@ The installer does **not** do these, and without them the setup is bypassable:
 
 ## Settings
 
-All in `config.py`, plain Python, next to the monitor. The ones you are likely to change
-are entries of the `SETTINGS` dict, each with its `default` and the `allowed` values it
-may take: `DAILY_LIMIT_SECONDS`, `CARRYOVER` (unused time rolls over to the next day),
-`MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED`.
+The five settings the monitor obeys live in `data/settings.json`, next to the monitor
+where the child cannot read them: `DAILY_LIMIT_SECONDS`, `CARRYOVER` (unused time rolls
+over to the next day), `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and
+`LATEST_HOUR_INCLUDED`. Edit that file, or let the parent's server set them. Delete it and
+the monitor falls back to the defaults in `config.py`, writing the file again at its
+next start.
 
-The rest are ordinary variables: paths, the check interval, the shutdown grace periods.
-Read settings through `get_config()`, never straight from `SETTINGS` -- values sent by the
-server are stored in `data/override_config.json` and win over the defaults. Deleting that
-file goes back to `config.py`; it is not meant to be edited by hand.
+`config.py` holds the rest -- paths, the check interval, the shutdown grace periods -- and,
+in its `SETTINGS` dict, the `default` and `allowed` values for the five above. Those
+defaults seed `settings.json` on a machine that has none and stand in for any value in it
+that is missing or out of range, so a mangled file cannot leave the machine unrestricted.
+Read settings through `get_config()`, never straight from `SETTINGS`.
 
 ## Extra time
 
@@ -98,8 +101,8 @@ the proxy -- keep it on `127.0.0.1` -- and the proxy must blank that header on a
 does not authenticate, or a client could name any parent it likes.
 
 The monitor reports the settings it has in force in every sync, and the server answers
-with the ones it wants in force whenever the two differ. There is no page for editing them
-yet: a change is a row in `config_changes`, written by hand for now.
+with the ones it wants whenever the two differ. There is no page for editing them yet: a
+change is a row in `settings_changes`, written by hand for now.
 
 ## Python dependencies
 
