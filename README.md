@@ -97,8 +97,9 @@ decides whose children the page shows. So the app must never be reachable except
 the proxy -- keep it on `127.0.0.1` -- and the proxy must blank that header on anything it
 does not authenticate, or a client could name any parent it likes.
 
-The monitor already reports the settings it has in force and applies a `config` key in the
-answer, but the server does not send one yet: today it only grants time.
+The monitor reports the settings it has in force in every sync, and the server answers
+with the ones it wants in force whenever the two differ. There is no page for editing them
+yet: a change is a row in `config_changes`, written by hand for now.
 
 ## Python dependencies
 

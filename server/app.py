@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -31,6 +32,8 @@ class SyncRequest(BaseModel):
     remaining_sec: int
     last_tick: str | None
     applied_grant_ids: list[int]
+    # the override set in force on the child; None from a client too old to say
+    config_overrides: dict | None = None
 
 
 class PendingGrant(BaseModel):
@@ -40,6 +43,7 @@ class PendingGrant(BaseModel):
 
 class SyncResponse(BaseModel):
     pending_grants: list[PendingGrant]
+    config_overrides: dict | None = None
 
 
 @dataclass
@@ -167,6 +171,16 @@ def pending_grants(connection: sqlite3.Connection, child_id: int) -> list[GrantV
     ]
 
 
+def wanted_config(connection: sqlite3.Connection, child_id: int) -> sqlite3.Row | None:
+    return connection.execute(
+        """SELECT id, overrides FROM config_changes
+           WHERE child_id = :child_id
+           ORDER BY id DESC
+           LIMIT 1""",
+        {"child_id": child_id},
+    ).fetchone()
+
+
 def csv_download(filename: str, header: list[str], rows: list[list]) -> Response:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -249,20 +263,24 @@ def authenticated_child_id(authorization: str) -> int:
 def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
     child_id = authenticated_child_id(http_request.headers.get("authorization", ""))
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    reported_overrides = sync_request.config_overrides
     connection = db.connect()
     with connection:
         connection.execute(
             """INSERT INTO status (child_id, date, time_spent_sec, carryover_sec,
-                                   granted_sec, remaining_sec, last_tick, updated_at)
+                                   granted_sec, remaining_sec, last_tick, updated_at,
+                                   reported_overrides)
                VALUES (:child_id, :date, :time_spent_sec, :carryover_sec,
-                       :granted_sec, :remaining_sec, :last_tick, :updated_at)
+                       :granted_sec, :remaining_sec, :last_tick, :updated_at,
+                       :reported_overrides)
                ON CONFLICT (child_id, date) DO UPDATE SET
                    time_spent_sec = :time_spent_sec,
                    carryover_sec = :carryover_sec,
                    granted_sec = :granted_sec,
                    remaining_sec = :remaining_sec,
                    last_tick = :last_tick,
-                   updated_at = :updated_at""",
+                   updated_at = :updated_at,
+                   reported_overrides = :reported_overrides""",
             {
                 "child_id": child_id,
                 "date": sync_request.date,
@@ -272,6 +290,9 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                 "remaining_sec": sync_request.remaining_sec,
                 "last_tick": sync_request.last_tick,
                 "updated_at": now,
+                "reported_overrides": (
+                    None if reported_overrides is None else json.dumps(reported_overrides)
+                ),
             },
         )
         connection.executemany(
@@ -288,9 +309,25 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                ORDER BY id""",
             {"child_id": child_id},
         ).fetchall()
+        # Sent only while it differs from what the child reports: the monitor
+        # rewrites its override file and logs a line for every answer carrying
+        # settings, and it syncs every minute.
+        overrides_to_send = None
+        wanted = wanted_config(connection, child_id)
+        if wanted is not None:
+            wanted_overrides = json.loads(wanted["overrides"])
+            if wanted_overrides == reported_overrides:
+                connection.execute(
+                    """UPDATE config_changes SET acked_at = :now
+                       WHERE id = :change_id AND acked_at IS NULL""",
+                    {"now": now, "change_id": wanted["id"]},
+                )
+            else:
+                overrides_to_send = wanted_overrides
     connection.close()
     return SyncResponse(
-        pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending]
+        pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending],
+        config_overrides=overrides_to_send,
     )
 
 

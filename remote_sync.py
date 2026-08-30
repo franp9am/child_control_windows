@@ -99,7 +99,7 @@ def send_status(
     )
     with urllib.request.urlopen(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
         answer = json.load(response)
-    config_overrides = answer.get("config")
+    config_overrides = answer.get("config_overrides")
     return SyncAnswer(
         pending_grants=[
             Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
