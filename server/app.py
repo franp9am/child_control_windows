@@ -67,6 +67,12 @@ class LastSeenView:
 
 
 @dataclass
+class SettingsView:
+    in_force: str
+    waiting_since: str | None  # when a parent asked for something the child has yet to confirm
+
+
+@dataclass
 class DayUsage:
     weekday: str
     spent: str
@@ -173,12 +179,47 @@ def pending_grants(connection: sqlite3.Connection, child_id: int) -> list[GrantV
 
 def wanted_settings(connection: sqlite3.Connection, child_id: int) -> sqlite3.Row | None:
     return connection.execute(
-        """SELECT id, settings FROM settings_changes
+        """SELECT id, settings, created_at FROM settings_changes
            WHERE child_id = :child_id
            ORDER BY id DESC
            LIMIT 1""",
         {"child_id": child_id},
     ).fetchone()
+
+
+def settings_in_words(settings: dict) -> str:
+    """The settings the child reports, on one line."""
+    carryover = (
+        f"carryover ≤{compact_duration(settings['MAX_CARRYOVER_SECONDS'])}"
+        if settings["CARRYOVER"]
+        else "no carryover"
+    )
+    return (
+        f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/day"
+        f" · {settings['EARLIEST_HOUR_INCLUDED']}–{settings['LATEST_HOUR_INCLUDED']} h"
+        f" · {carryover}"
+    )
+
+
+def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView | None:
+    row = connection.execute(
+        """SELECT reported_settings FROM status
+           WHERE child_id = :child_id
+           ORDER BY date DESC
+           LIMIT 1""",
+        {"child_id": child_id},
+    ).fetchone()
+    if row is None:
+        return None
+    if row["reported_settings"] is None:
+        return SettingsView(in_force="not reported by this monitor", waiting_since=None)
+    reported = json.loads(row["reported_settings"])
+    wanted = wanted_settings(connection, child_id)
+    unconfirmed = wanted is not None and json.loads(wanted["settings"]) != reported
+    return SettingsView(
+        in_force=settings_in_words(reported),
+        waiting_since=formatted_local_time(wanted["created_at"]) if unconfirmed else None,
+    )
 
 
 def stored_json(value: dict | None) -> str | None:
@@ -351,11 +392,12 @@ def index(request: Request, child_id: int | None = None) -> HTMLResponse:
         children[0] if children else None,
     )
     if selected_child is None:
-        waiting, status, week = [], None, None
+        waiting, status, week, settings = [], None, None, None
     else:
         waiting = pending_grants(connection, selected_child["id"])
         status = last_seen(connection, selected_child["id"])
         week = last_week(connection, selected_child["id"])
+        settings = settings_view(connection, selected_child["id"])
     connection.close()
     return templates.TemplateResponse(
         request,
@@ -366,6 +408,7 @@ def index(request: Request, child_id: int | None = None) -> HTMLResponse:
             "selected_child": selected_child,
             "pending_grants": waiting,
             "last_seen": status,
+            "settings": settings,
             "week": week,
             "logout_login": LOGOUT_LOGIN,
         },

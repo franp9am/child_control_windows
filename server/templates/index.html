@@ -66,6 +66,11 @@
   .status td { text-align: right; }
   .status tr:last-child th, .status tr:last-child td { border-bottom: none; }
   .never { margin: 0; font-size: .9rem; color: #888; }
+  .status .settings { color: #555; }
+  .status .waiting {
+    display: block; margin-top: .2rem; font-size: .82rem;
+    color: #a3170c;
+  }
   .week h2 { display: flex; align-items: baseline; }
   .week .total { margin-left: auto; font-weight: 400; color: #888; font-size: .85rem; }
   .chart { display: flex; align-items: stretch; gap: .35rem; height: 8rem; }
@@ -170,6 +175,16 @@
             <th>Last seen</th>
             <td>{{ last_seen.synced }}</td>
           </tr>
+          {% if settings %}
+          <tr>
+            <th>Settings</th>
+            <td class="settings">{{ settings.in_force }}
+              {% if settings.waiting_since %}
+              <span class="waiting">new ones waiting since {{ settings.waiting_since }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
         </table>
         {% else %}
         <p class="never">Nothing has synced for this child yet.</p>
