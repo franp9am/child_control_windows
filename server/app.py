@@ -106,6 +106,8 @@ def compact_duration(seconds: int) -> str:
         return "0"
     if hours == 0:
         return f"{minutes}m"
+    if minutes == 0:
+        return f"{hours}h"
     return f"{hours}h{minutes:02d}"
 
 
