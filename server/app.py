@@ -194,9 +194,11 @@ def settings_in_words(settings: dict) -> str:
         if settings["CARRYOVER"]
         else "no carryover"
     )
+    # the last allowed hour is included in full, so the machine goes down when it ends
+    until = settings["LATEST_HOUR_INCLUDED"] + 1
     return (
         f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/day"
-        f" · {settings['EARLIEST_HOUR_INCLUDED']}–{settings['LATEST_HOUR_INCLUDED']} h"
+        f" · {settings['EARLIEST_HOUR_INCLUDED']:02d}:00–{until:02d}:00"
         f" · {carryover}"
     )
 
