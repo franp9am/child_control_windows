@@ -366,8 +366,8 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
             settings = json.loads(wanted["settings"])
             if settings == reported_settings:
                 connection.execute(
-                    """UPDATE settings_changes SET acked_at = :now
-                       WHERE id = :change_id AND acked_at IS NULL""",
+                    """UPDATE settings_changes SET delivered_at = :now
+                       WHERE id = :change_id AND delivered_at IS NULL""",
                     {"now": now, "change_id": wanted["id"]},
                 )
             else:
