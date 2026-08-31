@@ -14,6 +14,7 @@ from typing import List, Optional
 from config import (
     APPLIED_GRANTS_FILE,
     CHILD_TOKEN_FILE,
+    REJECTED_SETTINGS_FILE,
     SERVER_URL,
     SYNC_TIMEOUT_SECONDS,
 )
@@ -31,6 +32,9 @@ class DailyStatus:
     last_tick: Optional[str]
     # the settings in force, so the server can resend its own until this matches
     settings: dict
+    # the last settings dict the server sent that this monitor refused, verbatim,
+    # so the server can tell delivered-and-refused from never delivered
+    rejected_settings: Optional[dict] = None
 
 
 @dataclass
@@ -76,6 +80,27 @@ def save_applied_grant_ids(grant_ids):
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(sorted(grant_ids), f)
     os.replace(tmp_file, APPLIED_GRANTS_FILE)  # make the write atomic
+
+
+def load_rejected_settings() -> Optional[dict]:
+    """The last server settings this monitor refused; None when none stands refused."""
+    try:
+        with open(REJECTED_SETTINGS_FILE, "r", encoding="utf-8") as f:
+            rejected = json.load(f)
+        return rejected if isinstance(rejected, dict) else None
+    except Exception:
+        return None
+
+
+def save_rejected_settings(rejected: Optional[dict]) -> None:
+    """None means the refusal is over: an accepted change supersedes it."""
+    if rejected is None:
+        REJECTED_SETTINGS_FILE.unlink(missing_ok=True)
+        return
+    tmp_file = REJECTED_SETTINGS_FILE.with_suffix(".tmp")
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(rejected, f)
+    os.replace(tmp_file, REJECTED_SETTINGS_FILE)  # make the write atomic
 
 
 def send_status(

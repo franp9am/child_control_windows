@@ -353,6 +353,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         remaining_sec=remaining_seconds(data, settings),
         last_tick=data["last_tick"],
         settings=settings,
+        rejected_settings=remote_sync.load_rejected_settings(),
     )
     already_applied = remote_sync.load_applied_grant_ids()
     try:
@@ -374,10 +375,12 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         # but an exact match means the monitor would not take what it asked for
         if in_force == answer.settings:
             data["event_log"].append(f"server settings {in_force} {now_str}")
+            remote_sync.save_rejected_settings(None)
         else:
             data["event_log"].append(
                 f"server settings refused {answer.settings}, in force {in_force} {now_str}"
             )
+            remote_sync.save_rejected_settings(answer.settings)
         settings = in_force
     if answer.pending_grants or already_applied or answer.settings is not None:
         save_data(data, datafile)
