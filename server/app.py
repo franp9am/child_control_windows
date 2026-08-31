@@ -408,22 +408,21 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                ORDER BY id""",
             {"child_id": child_id},
         ).fetchall()
-        # Sent only until the child echoes it back, in force or refused: the
-        # monitor rewrites its settings file and logs a line for every answer
-        # carrying settings, and it syncs every minute. The gate is on content
-        # alone, so a child that loses its rejected-settings file just gets a
-        # harmless resend and refuses again.
+        # Sent only until the child echoes it back, in force or refused; a lost
+        # echo is harmless, the child refuses the resend and echoes again
         settings_to_send = None
         wanted = wanted_settings(connection, child_id)
         if wanted is not None:
             settings = json.loads(wanted["settings"])
             if settings in (reported_settings, sync_request.rejected_settings):
+                # proof of delivery
                 connection.execute(
                     """UPDATE settings_changes SET delivered_at = :now
                        WHERE id = :change_id AND delivered_at IS NULL""",
                     {"now": now, "change_id": wanted["id"]},
                 )
             else:
+                # no delivery proof: send request again
                 settings_to_send = settings
     connection.close()
     return SyncResponse(

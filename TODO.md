@@ -1,11 +1,13 @@
 # TODO
 
-* Add settings control on the server
 * Real login on the server: Replace BasicAuth with a session cookie and a login form.
 * Replace `query user` and `msg` by native windows functions from ctypes
 * Support more accounts / children on one machine
 * Simplify installation + family, parent, child creation in DB and corresponsing login: less effort of the maintainer ?
 * ? long term -- full client rewrite to C# + exe installer ?
+* Once the monitor has proper versioning, send `monitor_version` on every sync
+  (optional field, like `rejected_settings`) -- for display and diagnostics on the
+  parent page only, never for protocol branching.
 * No tests. Start with the pure logic: `compute_carryover_sec`, `seconds_to_charge`,
   `handle_redeem_file`, `config.validated_settings`. Do this before the rewrites above.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into a new date and a fresh daily limit.
