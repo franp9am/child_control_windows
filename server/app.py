@@ -34,6 +34,9 @@ class SyncRequest(BaseModel):
     applied_grant_ids: list[int]
     # the settings in force on the child; None from a client too old to say
     settings: dict | None = None
+    # the last settings dict the server sent that the child refused, verbatim;
+    # None when nothing stands refused, or from a client too old to say
+    rejected_settings: dict | None = None
 
 
 class PendingGrant(BaseModel):
@@ -70,6 +73,13 @@ class LastSeenView:
 class SettingsView:
     in_force: str
     waiting_since: str | None  # when a parent asked for something the child has yet to confirm
+    refused: str | None  # the delivered change the child would not take, in words
+
+
+@dataclass
+class SettingsField:
+    name: str  # the monitor's own name for the setting, raw
+    value: str  # as JSON, so 3600 comes back an int and true a bool
 
 
 @dataclass
@@ -181,7 +191,7 @@ def pending_grants(connection: sqlite3.Connection, child_id: int) -> list[GrantV
 
 def wanted_settings(connection: sqlite3.Connection, child_id: int) -> sqlite3.Row | None:
     return connection.execute(
-        """SELECT id, settings, created_at FROM settings_changes
+        """SELECT id, settings, created_at, delivered_at FROM settings_changes
            WHERE child_id = :child_id
            ORDER BY id DESC
            LIMIT 1""",
@@ -217,18 +227,55 @@ def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView
     if row is None:
         return None
     if row["reported_settings"] is None:
-        return SettingsView(in_force="not reported by this monitor", waiting_since=None)
+        return SettingsView(
+            in_force="not reported by this monitor", waiting_since=None, refused=None
+        )
     reported = json.loads(row["reported_settings"])
     wanted = wanted_settings(connection, child_id)
     unconfirmed = wanted is not None and json.loads(wanted["settings"]) != reported
+    # delivered yet still unequal is the child's refusal; undelivered is transit
+    refused = unconfirmed and wanted["delivered_at"] is not None
     return SettingsView(
         in_force=settings_in_words(reported),
-        waiting_since=formatted_local_time(wanted["created_at"]) if unconfirmed else None,
+        waiting_since=(
+            formatted_local_time(wanted["created_at"]) if unconfirmed and not refused else None
+        ),
+        refused=settings_in_words(json.loads(wanted["settings"])) if refused else None,
     )
 
 
-def stored_json(value: dict | None) -> str | None:
-    return None if value is None else json.dumps(value)
+def child_reported_settings(connection: sqlite3.Connection, child_id: int) -> dict | None:
+    """What is in force on the child's PC, or None from a machine never heard from."""
+    row = connection.execute(
+        """SELECT reported_settings FROM status
+           WHERE child_id = :child_id
+           ORDER BY date DESC
+           LIMIT 1""",
+        {"child_id": child_id},
+    ).fetchone()
+    if row is None or row["reported_settings"] is None:
+        return None
+    return json.loads(row["reported_settings"])
+
+
+def settings_fields(connection: sqlite3.Connection, child_id: int) -> list[SettingsField] | None:
+    """One input per setting the child reports -- its report is the whole schema,
+    so a machine never heard from gets no form and no invented defaults.
+
+    Prefilled from the change still in flight when there is one, not from the
+    child, so a second parent pressing Save does not silently revert the first.
+    """
+    reported = child_reported_settings(connection, child_id)
+    if reported is None:
+        return None
+    prefill = reported
+    wanted = wanted_settings(connection, child_id)
+    if wanted is not None and wanted["delivered_at"] is None:
+        prefill = json.loads(wanted["settings"])  # an ask still in transit wins
+    return [
+        SettingsField(name=name, value=json.dumps(prefill.get(name, value)))
+        for name, value in reported.items()
+    ]
 
 
 def csv_download(filename: str, header: list[str], rows: list[list]) -> Response:
@@ -340,7 +387,11 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                 "remaining_sec": sync_request.remaining_sec,
                 "last_tick": sync_request.last_tick,
                 "updated_at": now,
-                "reported_settings": stored_json(reported_settings),
+                # NULL, not "null": a client too old to report settings must not
+                # look like one reporting nothing in particular
+                "reported_settings": (
+                    None if reported_settings is None else json.dumps(reported_settings)
+                ),
             },
         )
         connection.executemany(
@@ -357,14 +408,16 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                ORDER BY id""",
             {"child_id": child_id},
         ).fetchall()
-        # Sent only while it differs from what the child reports: the monitor
-        # rewrites its settings file and logs a line for every answer carrying
-        # settings, and it syncs every minute.
+        # Sent only until the child echoes it back, in force or refused: the
+        # monitor rewrites its settings file and logs a line for every answer
+        # carrying settings, and it syncs every minute. The gate is on content
+        # alone, so a child that loses its rejected-settings file just gets a
+        # harmless resend and refuses again.
         settings_to_send = None
         wanted = wanted_settings(connection, child_id)
         if wanted is not None:
             settings = json.loads(wanted["settings"])
-            if settings == reported_settings:
+            if settings in (reported_settings, sync_request.rejected_settings):
                 connection.execute(
                     """UPDATE settings_changes SET delivered_at = :now
                        WHERE id = :change_id AND delivered_at IS NULL""",
@@ -479,6 +532,79 @@ async def create_grant(request: Request) -> RedirectResponse:
     finally:
         connection.close()
     target = request.url_for("index").include_query_params(child_id=child_id)
+    return RedirectResponse(str(target), status_code=303)
+
+
+@app.get("/settings")
+def settings_page(request: Request, child_id: int) -> HTMLResponse:
+    parent = current_parent(request)
+    connection = db.connect()
+    try:
+        child = require_child_in_family(connection, child_id, parent.family_id)
+        view = settings_view(connection, child_id)
+        fields = settings_fields(connection, child_id)
+    finally:
+        connection.close()
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "parent": parent,
+            "child": child,
+            "settings": view,
+            "fields": fields,
+            "logout_login": LOGOUT_LOGIN,
+        },
+    )
+
+
+@app.post("/settings")
+async def change_settings(request: Request) -> RedirectResponse:
+    parent = current_parent(request)
+    form = await request.form()
+    try:
+        child_id = int(form["child_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="child_id must be a whole number")
+    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    connection = db.connect()
+    try:
+        require_child_in_family(connection, child_id, parent.family_id)
+        # the child's report names the settings; the form must answer all of
+        # them, since a change is every setting the parent wants, never a subset
+        reported = child_reported_settings(connection, child_id)
+        if reported is None:
+            raise HTTPException(status_code=409, detail="this monitor has never reported settings")
+        try:
+            new_settings = {name: json.loads(form[name]) for name in reported}
+        except (KeyError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail="every setting needs a JSON value, like 3600 or true",
+            )
+        # The report carries the types along with the names, so a new value must
+        # have the type of the value it replaces -- a setting the monitor grows
+        # tomorrow brings its own. Not a copy of the monitor's ranges, which
+        # stay its own; but a "7" for a 7 could not even be displayed if it
+        # came back refused.
+        if any(type(value) is not type(reported[name]) for name, value in new_settings.items()):
+            raise HTTPException(
+                status_code=400, detail="each setting keeps the type it already has"
+            )
+        with connection:
+            connection.execute(
+                """INSERT INTO settings_changes (child_id, changed_by, settings, created_at)
+                   VALUES (:child_id, :changed_by, :settings, :created_at)""",
+                {
+                    "child_id": child_id,
+                    "changed_by": parent.id,
+                    "settings": json.dumps(new_settings),
+                    "created_at": created_at,
+                },
+            )
+    finally:
+        connection.close()
+    target = request.url_for("settings_page").include_query_params(child_id=child_id)
     return RedirectResponse(str(target), status_code=303)
 
 

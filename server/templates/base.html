@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen time</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1rem;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: #fafafa; color: #1a1a1a;
+  }
+  .page { max-width: 26rem; margin: 0 auto; }
+  h1 {
+    display: flex; align-items: baseline;
+    margin: 0 0 1.2rem; font-size: 1.4rem; font-weight: 600;
+  }
+  .card {
+    background: #fff; border: 1px solid #ddd; border-top: none;
+    border-radius: 0 0 10px 10px;
+  }
+  .card.plain { border-top: 1px solid #ddd; border-radius: 10px; }
+  .section { padding: 1.25rem; border-top: 1px solid #eee; }
+  .section:first-child { border-top: none; }
+  .section h2 {
+    margin: 0 0 .8rem; font-size: 1rem; font-weight: 600; color: #333;
+  }
+  .empty { color: #888; font-size: .9rem; }
+  .whoami {
+    display: inline-flex; align-items: center; gap: .45rem;
+    margin-left: auto; align-self: center;
+    padding: .3rem .7rem .3rem .5rem;
+    border: 1px solid #ddd; border-radius: 999px; background: #fff;
+    font-size: .9rem; font-weight: 400; color: #555;
+    text-decoration: none;
+  }
+  .whoami:hover { border-color: #999; color: #1a1a1a; }
+  .whoami:hover svg { stroke: #1a1a1a; }
+  .whoami svg {
+    width: 1.1rem; height: 1.1rem;
+    fill: none; stroke: #999; stroke-width: 1.7; stroke-linecap: round;
+  }
+</style>
+{% block style %}{% endblock %}
+</head>
+<body>
+  <div class="page">
+    <!-- Logging out of basic auth means making the browser forget the password
+         it cached, and the only way to do that is to hand it a different one.
+         The credentials below are bogus on purpose; /logout is the one path
+         nginx checks against an htpasswd that contains nothing else, so they
+         are accepted there and take the place of the real password. It then
+         redirects to /, which 401s -- and because that URL carries no
+         credentials of its own, the login box it opens is one that can
+         actually be answered. Sending the bogus pair straight to / instead
+         would log the parent out and then refuse every password they type,
+         since credentials in the address bar beat anything typed into the
+         prompt. Scheme is hardcoded because a redirect from http would drop
+         them. -->
+    <h1>Screen time<a class="whoami" href="https://{{ logout_login }}:{{ logout_login }}@{{ request.url.hostname }}/logout" title="Sign out">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.6"></circle>
+        <path d="M4.8 20c0-3.7 3.2-5.6 7.2-5.6s7.2 1.9 7.2 5.6"></path>
+      </svg>{{ parent.login }}</a></h1>
+
+    {% block content %}{% endblock %}
+  </div>
+  {% block script %}{% endblock %}
+</body>
+</html>

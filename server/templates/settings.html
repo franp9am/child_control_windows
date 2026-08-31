@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block style %}
+<style>
+  .back {
+    display: inline-block; margin-bottom: .8rem;
+    font-size: .9rem; color: #666; text-decoration: none;
+  }
+  .back:hover { color: #1a1a1a; }
+  .in-force { margin: 0; font-size: .9rem; color: #333; }
+  .note { margin: .6rem 0 0; font-size: .85rem; color: #a3170c; }
+  .muted { margin: 0; color: #888; font-size: .9rem; }
+  .settings-form {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: .55rem .8rem; align-items: center;
+  }
+  .settings-form label { font-size: .85rem; color: #333; overflow-wrap: anywhere; }
+  .settings-form input {
+    width: 7.5rem; padding: .55rem .6rem; border-radius: 6px; text-align: right;
+    border: 1px solid #ccc; background: #fff; color: #1a1a1a;
+    font-size: 1rem; font-family: inherit;
+  }
+  .settings-form input:focus { outline: none; border-color: #888; }
+  .settings-form button {
+    grid-column: 2; justify-self: end; margin-top: .4rem;
+    padding: .55rem 1.4rem; border-radius: 6px;
+    border: 1px solid #1a1a1a; cursor: pointer;
+    background: #1a1a1a; color: #fff; font-size: .95rem; font-family: inherit;
+  }
+  .settings-form button:active { transform: translateY(1px); }
+</style>
+{% endblock %}
+{% block content %}
+    <a class="back" href="{{ url_for('index').include_query_params(child_id=child.id) }}">&larr; {{ child.name }}</a>
+
+    <div class="card plain">
+      <div class="section">
+        <h2>In force on {{ child.name }}'s PC</h2>
+        {% if settings %}
+        <p class="in-force">{{ settings.in_force }}</p>
+        {% if settings.waiting_since %}
+        <p class="note">new ones waiting since {{ settings.waiting_since }}</p>
+        {% endif %}
+        {% if settings.refused %}
+        <p class="note">the PC refused the last change: {{ settings.refused }}</p>
+        {% endif %}
+        {% else %}
+        <p class="muted">Nothing has synced for this child yet.</p>
+        {% endif %}
+      </div>
+
+      <div class="section">
+        {% if fields %}
+        <h2>Change them</h2>
+        <form class="settings-form" method="post" action="{{ url_for('change_settings') }}">
+          <input type="hidden" name="child_id" value="{{ child.id }}">
+          {% for field in fields %}
+          <label for="{{ field.name }}">{{ field.name }}</label>
+          <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" required>
+          {% endfor %}
+          <button type="submit">Save</button>
+        </form>
+        {% else %}
+        <p class="muted">This monitor has not reported its settings, so there is nothing to edit yet.</p>
+        {% endif %}
+      </div>
+    </div>
+{% endblock %}

@@ -1,21 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Screen time</title>
+{% extends "base.html" %}
+{% block style %}
 <style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 2.5rem 1rem;
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-    background: #fafafa; color: #1a1a1a;
-  }
-  .page { max-width: 26rem; margin: 0 auto; }
-  h1 {
-    display: flex; align-items: baseline;
-    margin: 0 0 1.2rem; font-size: 1.4rem; font-weight: 600;
-  }
   .tabs { display: flex; gap: .3rem; border-bottom: 1px solid #ddd; }
   .tab {
     padding: .5rem .9rem; font-size: .9rem; text-decoration: none;
@@ -24,15 +9,6 @@
   }
   .tab:hover { background: #e8e8e8; }
   .tab.selected { background: #fff; color: #1a1a1a; font-weight: 600; }
-  .card {
-    background: #fff; border: 1px solid #ddd; border-top: none;
-    border-radius: 0 0 10px 10px;
-  }
-  .section { padding: 1.25rem; border-top: 1px solid #eee; }
-  .section:first-child { border-top: none; }
-  .section h2 {
-    margin: 0 0 .8rem; font-size: 1rem; font-weight: 600; color: #333;
-  }
   .grant-form { display: flex; align-items: center; gap: .5rem; }
   .grant-form input[type="number"] {
     width: 4.5rem; padding: .55rem .6rem; border-radius: 6px; text-align: right;
@@ -60,6 +36,7 @@
   .grants li:last-child { margin-bottom: 0; }
   .grants .amount { font-weight: 600; }
   .grants .created { margin-left: auto; color: #a06158; font-size: .82rem; }
+  .grants .by { color: #a06158; font-size: .82rem; }
   .status { width: 100%; border-collapse: collapse; font-size: .9rem; }
   .status th, .status td { padding: .4rem 0; border-bottom: 1px solid #eee; }
   .status th { text-align: left; font-weight: 400; color: #888; }
@@ -70,6 +47,7 @@
     display: block; margin-top: .2rem; font-size: .82rem;
     color: #a3170c;
   }
+  .status a { color: inherit; }
   .week h2 { display: flex; align-items: baseline; }
   .week .total { margin-left: auto; font-weight: 400; color: #888; font-size: .85rem; }
   .chart { display: flex; align-items: stretch; gap: .35rem; height: 8rem; }
@@ -90,44 +68,9 @@
     font-size: .85rem;
   }
   .export a:hover { background: #f2f2f2; border-color: #999; color: #1a1a1a; }
-  .empty { color: #888; font-size: .9rem; }
-  .whoami {
-    display: inline-flex; align-items: center; gap: .45rem;
-    margin-left: auto; align-self: center;
-    padding: .3rem .7rem .3rem .5rem;
-    border: 1px solid #ddd; border-radius: 999px; background: #fff;
-    font-size: .9rem; font-weight: 400; color: #555;
-    text-decoration: none;
-  }
-  .whoami:hover { border-color: #999; color: #1a1a1a; }
-  .whoami:hover svg { stroke: #1a1a1a; }
-  .whoami svg {
-    width: 1.1rem; height: 1.1rem;
-    fill: none; stroke: #999; stroke-width: 1.7; stroke-linecap: round;
-  }
-  .grants .by { color: #a06158; font-size: .82rem; }
 </style>
-</head>
-<body>
-  <div class="page">
-    <!-- Logging out of basic auth means making the browser forget the password
-         it cached, and the only way to do that is to hand it a different one.
-         The credentials below are bogus on purpose; /logout is the one path
-         nginx checks against an htpasswd that contains nothing else, so they
-         are accepted there and take the place of the real password. It then
-         redirects to /, which 401s -- and because that URL carries no
-         credentials of its own, the login box it opens is one that can
-         actually be answered. Sending the bogus pair straight to / instead
-         would log the parent out and then refuse every password they type,
-         since credentials in the address bar beat anything typed into the
-         prompt. Scheme is hardcoded because a redirect from http would drop
-         them. -->
-    <h1>Screen time<a class="whoami" href="https://{{ logout_login }}:{{ logout_login }}@{{ request.url.hostname }}/logout" title="Sign out">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="8" r="3.6"></circle>
-        <path d="M4.8 20c0-3.7 3.2-5.6 7.2-5.6s7.2 1.9 7.2 5.6"></path>
-      </svg>{{ parent.login }}</a></h1>
-
+{% endblock %}
+{% block content %}
     {% if children %}
     <nav class="tabs">
       {% for child in children %}
@@ -176,10 +119,13 @@
           </tr>
           {% if settings %}
           <tr>
-            <th>Settings</th>
+            <th><a href="{{ url_for('settings_page').include_query_params(child_id=selected_child.id) }}">Settings</a></th>
             <td>{{ settings.in_force }}
               {% if settings.waiting_since %}
               <span class="waiting">new ones waiting since {{ settings.waiting_since }}</span>
+              {% endif %}
+              {% if settings.refused %}
+              <span class="waiting">the PC refused the last change</span>
               {% endif %}
             </td>
           </tr>
@@ -220,11 +166,11 @@
     {% else %}
     <p class="empty">No children in your family yet. Add one with <code>add_child.py</code>.</p>
     {% endif %}
-  </div>
+{% endblock %}
+{% block script %}
   <script>
     setInterval(() => {
       if (!document.querySelector("input:focus")) location.reload();
     }, 60000);
   </script>
-</body>
-</html>
+{% endblock %}
