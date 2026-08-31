@@ -40,8 +40,7 @@ CREATE TABLE IF NOT EXISTS settings_changes (
     changed_by INTEGER NOT NULL REFERENCES parents(id),
     settings TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    -- when the child confirmed receiving this change; taken or refused, it
-    -- arrived, which is less than the "applied" that grants.acked_at means
+    -- when the child confirmed receiving this change; taken or refused
     delivered_at TEXT
 );
 CREATE TABLE IF NOT EXISTS status (
