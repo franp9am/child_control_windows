@@ -369,9 +369,16 @@ def sync_with_server(data, datafile, now, settings) -> dict:
     if answer.settings is not None:
         # Stored, so they outlive this run and stay in force while the server
         # is unreachable.
-        settings = config.save_settings(answer.settings)
-        # log what survived validation, not what was sent -- they differ on a bad value
-        data["event_log"].append(f"server settings {settings} {now_str}")
+        in_force = config.save_settings(answer.settings)
+        # all or nothing, and the server always sends every setting, so anything
+        # but an exact match means the monitor would not take what it asked for
+        if in_force == answer.settings:
+            data["event_log"].append(f"server settings {in_force} {now_str}")
+        else:
+            data["event_log"].append(
+                f"server settings refused {answer.settings}, in force {in_force} {now_str}"
+            )
+        settings = in_force
     if answer.pending_grants or already_applied or answer.settings is not None:
         save_data(data, datafile)
         remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])

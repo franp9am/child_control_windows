@@ -75,15 +75,23 @@ def value_allowed(name: str, value) -> bool:
         return False
 
 
-def validated_settings(stored: dict) -> dict:
-    """Every setting, taking each valid stored value and the default for the rest."""
-    settings = default_settings()
-    settings.update({name: value for name, value in stored.items()
-                     if name in SETTINGS and value_allowed(name, value)})
+def validated_settings(stored: dict, fallback=None) -> dict:
+    """All of `stored` or none of it: one value this monitor may not take and
+    `fallback` is kept whole, never a mix of the two.
+
+    `fallback` is what is already in force, or the defaults when nothing is. It
+    also supplies any setting `stored` does not mention, which is how a machine
+    upgraded to a monitor with a new setting keeps the four it already had.
+    """
+    if fallback is None:
+        fallback = default_settings()
+    if any(name not in SETTINGS or not value_allowed(name, value)
+           for name, value in stored.items()):
+        return dict(fallback)
+    settings = {name: stored.get(name, fallback[name]) for name in SETTINGS}
     # an unusable window would shut the machine down before a correction could arrive
     if settings["EARLIEST_HOUR_INCLUDED"] > settings["LATEST_HOUR_INCLUDED"]:
-        settings["EARLIEST_HOUR_INCLUDED"] = SETTINGS["EARLIEST_HOUR_INCLUDED"]["default"]
-        settings["LATEST_HOUR_INCLUDED"] = SETTINGS["LATEST_HOUR_INCLUDED"]["default"]
+        return dict(fallback)
     return settings
 
 
@@ -107,9 +115,8 @@ def write_settings_file(settings: dict) -> None:
 
 
 def save_settings(sent: dict) -> dict:
-    """Store what the server sent, dropping anything it may not set, and return
-    the settings now in force."""
-    settings = validated_settings(sent)
+    """Store what the server sent, keeping what is in force wherever it may not."""
+    settings = validated_settings(sent, get_config())
     write_settings_file(settings)
     return settings
 
