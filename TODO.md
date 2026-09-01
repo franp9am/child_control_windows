@@ -7,12 +7,8 @@ Ordered by leverage; if only two get done, the first two.
 * Send `monitor_version` on every sync, now, as a hardcoded constant -- optional
   field, like `rejected_settings`. Display and diagnostics on the parent page
   only, never protocol branching. Can't be retrofitted remotely.
-* Wire `os_tooling.py` into monitor.py, replacing `query user` and `msg`. The module
-  is written but nothing imports it, so the subprocess path is still the live one --
-  and neither tool exists on windows Home: notifications fail silently and every tick
-  falls back to a loose `tasklist | findstr` substring match. Note `users_at_screen()`
-  also stops charging a locked screen, which changes the night-time branch: a locked
-  machine would no longer be shut down. Decide that, then test on Home.
+* Test the wired-up `os_tooling.py` on windows **Home**, where `query user` and `msg`
+  do not exist and the old path was broken. Verified on Pro only so far.
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
 * `icacls` exit code unchecked on the Python dir (install.ps1:112), the bug already fixed

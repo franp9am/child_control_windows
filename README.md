@@ -9,7 +9,12 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 ## Parts
 
 * `monitor.py` -- runs as SYSTEM from boot, counts the child's session time, shuts the
-  machine down when the limit is used up or the allowed hours end.
+  machine down when the limit is used up or the allowed hours end. A tick only counts,
+  and a shutdown only happens, while the child is logged in with the screen unlocked;
+  a locked machine is left alone until somebody unlocks it.
+* `os_tooling.py` -- the windows calls the monitor makes: who is at the screen, the
+  on-screen warning, the shutdown. Uses the session API, which -- unlike the
+  `query user` and `msg` commands it replaced -- also exists on windows Home.
 * `config.py` -- every setting, next to the monitor in a folder the child cannot read.
 * `remaining_time_widget.py` -- a small always-on-top "time left" box in the child's
   session. Cosmetic; the child may hide it with Ctrl+Alt+H or kill it.

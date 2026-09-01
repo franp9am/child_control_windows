@@ -3,13 +3,13 @@ import hashlib
 import hmac
 import json
 import os
-import subprocess
 import time
 import traceback
 from pathlib import Path
 from typing import Optional
 
 import config
+import os_tooling
 import remote_sync
 from config import (
     CHECK_INTERVAL_SECONDS,
@@ -181,56 +181,25 @@ except Exception:
     raise
 
 
-def query_users():
-    """May only work on windows Pro"""
-    r = subprocess.run(
-        ["query", "user"],
-        capture_output=True,
-        text=True,
-        errors="ignore"
-    )
-    return r.stdout
-
-
-def user_has_tasks(user):
-    """Should also work on windows Home"""
-    cmd = f'tasklist /V | findstr /I "{user}"'
-    r = subprocess.run(
-        cmd,
-        shell=True,
-        capture_output=True,
-        text=True,
-        errors="ignore"
-    )
-    return r.returncode == 0 and bool(r.stdout.strip())
-
-
-def user_logged_in(user=TARGET_USER):
+def user_logged_in(user=TARGET_USER) -> bool:
+    """Whether the child is logged in with the screen unlocked, which is the
+    only question the loop asks. The legacy fallback covers a windows whose
+    session API will not answer; it cannot see a locked screen, so it errs
+    towards "the child is here" rather than towards unlimited screen time."""
     try:
-        qu = query_users().lower()
-        return user.lower() in qu
-    except Exception:  # query user doesnt work or doesnt return a string
-        return user_has_tasks(user)
+        return any(name.lower() == user.lower()
+                   for name in os_tooling.users_at_screen().values())
+    except OSError:
+        return os_tooling.legacy_user_logged_in(user)
 
 
 def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
     """Force close apps and power off; the undelayed repeat defeats `shutdown /a`."""
-    for delay in (int(shutdown_delay_seconds), 0):
-        args = ["shutdown", "/s", "/f", "/t", str(delay)]
-        subprocess.run(args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        time.sleep(delay + 10)
+    os_tooling.shutdown(int(shutdown_delay_seconds))
 
 
 def send_message(message, user=TARGET_USER):
-    """May only work on windows Pro"""
-    try:
-        subprocess.run(
-            ["msg", user, message],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except Exception:
-        # not critical
-        pass
+    os_tooling.notify(message, user)
 
 
 def verify(msg: bytes, sig_hex: str) -> bool:

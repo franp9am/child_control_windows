@@ -100,7 +100,7 @@ def notify(message: str, user: str) -> None:
                                           MESSAGE_BOX_OK, NO_TIMEOUT,
                                           ctypes.byref(clicked_button), WAIT_FOR_CLICK)
     except OSError:
-        pass  # a warning that never arrives is not worth killing the monitor over
+        legacy_notify(message, user)
 
 
 def shutdown(delay_seconds: int) -> None:
@@ -108,3 +108,52 @@ def shutdown(delay_seconds: int) -> None:
     for delay in (delay_seconds, 0):
         subprocess.run(["shutdown", "/s", "/f", "/t", str(delay)], creationflags=CREATE_NO_WINDOW)
         time.sleep(delay + SHUTDOWN_GRACE_SECONDS)
+
+
+# --- legacy ---
+# What the monitor used before the session API above; neither tool exists on
+# windows Home. Only reached when that API will not answer at all.
+
+
+def legacy_query_users() -> str:
+    """May only work on windows Pro"""
+    r = subprocess.run(
+        ["query", "user"],
+        capture_output=True,
+        text=True,
+        errors="ignore"
+    )
+    return r.stdout
+
+
+def legacy_user_has_tasks(user: str) -> bool:
+    """Should also work on windows Home"""
+    cmd = f'tasklist /V | findstr /I "{user}"'
+    r = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+        errors="ignore"
+    )
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
+def legacy_user_logged_in(user: str) -> bool:
+    try:
+        qu = legacy_query_users().lower()
+        return user.lower() in qu
+    except Exception:  # query user doesnt work or doesnt return a string
+        return legacy_user_has_tasks(user)
+
+
+def legacy_notify(message: str, user: str) -> None:
+    """May only work on windows Pro"""
+    try:
+        subprocess.run(
+            ["msg", user, message],
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except Exception:
+        # not critical
+        pass
