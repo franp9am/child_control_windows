@@ -116,7 +116,7 @@ $pythonw = Join-Path $pythonDir pythonw.exe   # windowless twin, for the widget
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
 # That lock is what stops the child reading data\secret.txt and forging codes.
 New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
-Copy-Item "$src\monitor.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
+Copy-Item "$src\monitor.py", "$src\os_tooling.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
 $copiedConfigPath = "$MonitorDir\config.py"
 [IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
