@@ -1,6 +1,5 @@
 $ErrorActionPreference = "Stop"
-$MonitorDir    = "C:\ProgramData\ScreenTime"        # monitor + data; hidden from the child
-$OldWidgetDir  = "C:\ProgramData\ScreenTimeWidget"  # older installs; removed further down
+$MonitorDir = "C:\ProgramData\ScreenTime"   # monitor + data; hidden from the child
 
 # Re-launch as administrator if we aren't already.
 $admin = [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -137,7 +136,6 @@ New-Item -ItemType Directory -Force $SharedDir | Out-Null
 icacls $SharedDir /grant "*S-1-5-32-545:(OI)(CI)M" | Out-Null   # *S-1-5-32-545 = BUILTIN\Users
 Copy-Item "$src\remaining_time_widget.py" $SharedDir -Force
 if (-not (Test-Path $redeemFile)) { New-Item -ItemType File $redeemFile | Out-Null }
-if (Test-Path $OldWidgetDir) { Remove-Item $OldWidgetDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 # The shortcut goes on the shared desktop, which every account sees -- the
 # child's own Desktop folder may have been moved into OneDrive.

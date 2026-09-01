@@ -9,8 +9,7 @@
 [CmdletBinding()]
 param(
     [string]$MonitorDir = "C:\ProgramData\ScreenTime",
-    [string]$SharedDir    = "C:\ProgramData\ScreenTimeShared",
-    [string]$OldWidgetDir = "C:\ProgramData\ScreenTimeWidget",
+    [string]$SharedDir  = "C:\ProgramData\ScreenTimeShared",
     [string]$MonitorTaskName = "ScreenTimeMonitor",
     [string]$WidgetTaskName  = "ScreenTimeWidget",
     [switch]$KeepData
@@ -43,19 +42,16 @@ foreach ($t in @($MonitorTaskName, $WidgetTaskName)) {
 Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" |
     Where-Object {
         $_.CommandLine -match [regex]::Escape($MonitorDir) -or
-        $_.CommandLine -match [regex]::Escape($SharedDir) -or
-        $_.CommandLine -match [regex]::Escape($OldWidgetDir)
+        $_.CommandLine -match [regex]::Escape($SharedDir)
     } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
         Write-Host "Stopped running process (PID $($_.ProcessId))" -ForegroundColor Green
     }
 
-foreach ($dir in @($SharedDir, $OldWidgetDir)) {
-    if (Test-Path $dir) {
-        Remove-Item -LiteralPath $dir -Recurse -Force
-        Write-Host "Deleted $dir" -ForegroundColor Green
-    }
+if (Test-Path $SharedDir) {
+    Remove-Item -LiteralPath $SharedDir -Recurse -Force
+    Write-Host "Deleted $SharedDir" -ForegroundColor Green
 }
 
 $link = "$env:PUBLIC\Desktop\Extra time.lnk"
