@@ -2,6 +2,10 @@ import json
 import os
 from pathlib import Path
 
+# Bumped by hand, reported on every sync; the parent's page displays it and
+# nothing branches on it.
+MONITOR_VERSION = "0.1.0"
+
 # Every local account may read and write here, so nothing in it is trusted.
 SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
 REDEEM_FILE_PATH = SHARED_DIR / "extra_time.txt"  # the child pastes redeem codes in

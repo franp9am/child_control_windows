@@ -14,6 +14,7 @@ from typing import List, Optional
 from config import (
     APPLIED_GRANTS_FILE,
     CHILD_TOKEN_FILE,
+    MONITOR_VERSION,
     REJECTED_SETTINGS_FILE,
     SERVER_URL,
     SYNC_TIMEOUT_SECONDS,
@@ -113,6 +114,7 @@ def send_status(
     """
     payload = asdict(status)
     payload["applied_grant_ids"] = applied_grant_ids
+    payload["monitor_version"] = MONITOR_VERSION
     request = urllib.request.Request(
         SERVER_URL.rstrip("/") + "/api/sync",
         data=json.dumps(payload).encode("utf-8"),
