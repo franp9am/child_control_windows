@@ -76,6 +76,12 @@ Two ways, and either works on its own.
 and the monitor picks them up on its next sync, within about a minute. Negative grants
 work too, and never outlive the day.
 
+A grant carries no date and never expires: it is applied on the day the machine next
+syncs, not the day it was made, so one entered while the PC is off lands whenever the
+child next turns it on. For a negative grant that also bounds the damage -- it can take
+at most that one day's limit and carryover, and the remainder is dropped rather than
+carried into the next day, so -20 h and -6 h cost the same single day.
+
 **A signed code**, for when there is no server. The parent runs `create_code.py` and gets
 `<date>:<seconds>:<signature>`, e.g. `2026-07-23:3600:a184` for an extra hour. The child
 pastes it into `C:\ProgramData\ScreenTimeShared\extra_time.txt` (the "Extra time" shortcut
