@@ -104,7 +104,8 @@ def notify(message: str, user: str) -> None:
 
 
 def shutdown(delay_seconds: int) -> None:
-    """Blocks until the machine goes down; the undelayed repeat defeats `shutdown /a`."""
+    """Force-closes apps and powers off, blocking until the machine is down; the
+    undelayed repeat defeats `shutdown /a`."""
     for delay in (delay_seconds, 0):
         subprocess.run(["shutdown", "/s", "/f", "/t", str(delay)], creationflags=CREATE_NO_WINDOW)
         time.sleep(delay + SHUTDOWN_GRACE_SECONDS)

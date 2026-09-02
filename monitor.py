@@ -193,11 +193,6 @@ def user_logged_in(user=TARGET_USER) -> bool:
         return os_tooling.legacy_user_logged_in(user)
 
 
-def shutdown_machine(shutdown_delay_seconds=SHUTDOWN_DELAY_SECONDS):
-    """Force close apps and power off; the undelayed repeat defeats `shutdown /a`."""
-    os_tooling.shutdown(int(shutdown_delay_seconds))
-
-
 def send_message(message, user=TARGET_USER):
     os_tooling.notify(message, user)
 
@@ -429,7 +424,7 @@ def main():
                     sync_with_server(data, datafile, now, settings)
                     # last, because it blocks until the machine goes down; a
                     # failure above only costs this tick, the next one retries
-                    shutdown_machine(NIGHT_SHUTDOWN_DELAY_SECONDS)
+                    os_tooling.shutdown(NIGHT_SHUTDOWN_DELAY_SECONDS)
                     continue
 
                 redeem = handle_redeem_file()
@@ -458,7 +453,7 @@ def main():
                     sync_with_server(data, datafile, now, settings)
                     # last, because it blocks until the machine goes down; a
                     # failure above only costs this tick, the next one retries
-                    shutdown_machine(SHUTDOWN_DELAY_SECONDS)
+                    os_tooling.shutdown(SHUTDOWN_DELAY_SECONDS)
                     continue
 
                 data["time_spent_sec"] += seconds_to_charge(data, now)
