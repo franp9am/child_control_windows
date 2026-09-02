@@ -415,15 +415,23 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
         if wanted is not None:
             settings = json.loads(wanted["settings"])
             if settings in (reported_settings, sync_request.rejected_settings):
-                # proof of delivery
+                # proof of delivery, keep settings_to_send None (no need to repeat)
                 connection.execute(
                     """UPDATE settings_changes SET delivered_at = :now
                        WHERE id = :change_id AND delivered_at IS NULL""",
                     {"now": now, "change_id": wanted["id"]},
                 )
             else:
-                # no delivery proof: send request again
-                settings_to_send = settings
+                # No delivery proof: this child does not have the change and did
+                # not refuse it, so any proof on the row is from an install that
+                # is gone -- a reused token on a fresh machine. Dropping it keeps
+                # the page saying "waiting" rather than inventing a refusal.
+                connection.execute(
+                    """UPDATE settings_changes SET delivered_at = NULL
+                       WHERE id = :change_id""",
+                    {"change_id": wanted["id"]},
+                )
+                settings_to_send = settings  # send request again
     connection.close()
     return SyncResponse(
         pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending],
