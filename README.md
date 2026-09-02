@@ -12,9 +12,6 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
   machine down when the limit is used up or the allowed hours end. A tick only counts,
   and a shutdown only happens, while the child is logged in with the screen unlocked;
   a locked machine is left alone until somebody unlocks it.
-* `os_tooling.py` -- the windows calls the monitor makes: who is at the screen, the
-  on-screen warning, the shutdown. Uses the session API, which -- unlike the
-  `query user` and `msg` commands it replaced -- also exists on windows Home.
 * `config.py` -- every setting, next to the monitor in a folder the child cannot read.
 * `remaining_time_widget.py` -- a small always-on-top "time left" box in the child's
   session. Cosmetic; the child may hide it with Ctrl+Alt+H or kill it.
@@ -59,7 +56,22 @@ The installer does **not** do these, and without them the setup is bypassable:
 The five settings the monitor obeys live in `data/settings.json`, next to the monitor
 where the child cannot read them: `DAILY_LIMIT_SECONDS`, `CARRYOVER` (unused time rolls
 over to the next day), `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and
-`LATEST_HOUR_INCLUDED`. Edit that file, or let the parent's server set them. Delete it and
+`LATEST_HOUR_INCLUDED`. Example:
+
+```json
+{
+  "DAILY_LIMIT_SECONDS": 3600,
+  "CARRYOVER": true,
+  "MAX_CARRYOVER_SECONDS": 18000,
+  "EARLIEST_HOUR_INCLUDED": 6,
+  "LATEST_HOUR_INCLUDED": 20
+}
+```
+
+One hour a day, usable between 6:00 and 20:59 -- the night starts at 21:00 and ends at
+6:00 -- with unused time carried over, but never more than five hours of it.
+
+Edit that file, or let the parent's server set them. Delete it and
 the monitor falls back to the defaults in `config.py`, writing the file again at its
 next start.
 
