@@ -176,7 +176,7 @@ $who = New-ScheduledTaskPrincipal -UserId $childUser -LogonType Interactive
 Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Settings $opts -Force | Out-Null
 
 if ($generatedSecret) {
-    Write-Host "`nShared secret, needed by create_code.py on your own machine:" -ForegroundColor Yellow
+    Write-Host "`nShared secret, needed by grant_extra_time_offline.py on your own machine:" -ForegroundColor Yellow
     Write-Host "  $generatedSecret"
     Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET)"
 }

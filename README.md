@@ -34,7 +34,8 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 3. Reboot. The monitor runs from boot, the widget appears when the child logs in.
 
 If the installer generated the secret, it prints it at the end -- the parent's machine
-needs the same one, in `data/secret.txt` next to `create_code.py` or in `CHILD_SECRET`.
+needs the same one, in `data/secret.txt` next to `grant_extra_time_offline.py` or in
+`CHILD_SECRET`.
 
 `uninstall.cmd` removes everything (pass `-KeepData` to keep the usage history).
 
@@ -82,14 +83,15 @@ child next turns it on. For a negative grant that also bounds the damage -- it c
 at most that one day's limit and carryover, and the remainder is dropped rather than
 carried into the next day, so -20 h and -6 h cost the same single day.
 
-**A signed code**, for when there is no server. The parent runs `create_code.py` and gets
-`<date>:<seconds>:<signature>`, e.g. `2026-07-23:3600:a184` for an extra hour. The child
-pastes it into `C:\ProgramData\ScreenTimeShared\extra_time.txt` (the "Extra time" shortcut
-the install put on the desktop). The date is only a nonce, not an expiry -- a code stays valid
+**A signed code**, for when there is no server. The parent runs
+`grant_extra_time_offline.py` and gets `<date>:<seconds>:<signature>`, e.g.
+`2026-07-23:3600:a184` for an extra hour. The child pastes it into
+`C:\ProgramData\ScreenTimeShared\extra_time.txt` (the "Extra time" shortcut the install
+put on the desktop). The date is only a nonce, not an expiry -- a code stays valid
 forever, but each one can be redeemed exactly once.
 
-`create_code.py` imports nothing else from the project, so copying that one
-file to the parent's machine is enough, as long as its `SIGNATURE_CHARS` matches
+`grant_extra_time_offline.py` imports nothing else from the project, so copying that
+one file to the parent's machine is enough, as long as its `SIGNATURE_CHARS` matches
 `config.py` and both machines hold the same secret.
 
 ## Optional: the parent's server
