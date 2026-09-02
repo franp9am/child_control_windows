@@ -2,8 +2,6 @@
 
 ## Before the client freezes
 
-Ordered by leverage; if only two get done, the first two.
-
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into a new date and a fresh daily limit.
