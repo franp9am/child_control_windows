@@ -4,15 +4,8 @@
 
 Ordered by leverage; if only two get done, the first two.
 
-* Send `monitor_version` on every sync, now, as a hardcoded constant -- optional
-  field, like `rejected_settings`. Display and diagnostics on the parent page
-  only, never protocol branching. Can't be retrofitted remotely.
-* Test the wired-up `os_tooling.py` on windows **Home**, where `query user` and `msg`
-  do not exist and the old path was broken. Verified on Pro only so far.
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
-* `icacls` exit code unchecked on the Python dir (install.ps1:112), the bug already fixed
-  for $MonitorDir. If it fails the child can plant sitecustomize.py that runs as SYSTEM.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into a new date and a fresh daily limit.
 * No tests. Start with the pure logic: `compute_carryover_sec`, `seconds_to_charge`,
   `handle_redeem_file`, `config.validated_settings`. Client bugs are expensive after the freeze.

@@ -125,6 +125,7 @@ $pythonDir = Split-Path $python
 # as SYSTEM at every boot. Program Files already forbids that, but a folder at the
 # root of C:\ inherits an ACE that lets any user create files inside it.
 icacls $pythonDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # SYSTEM, Administrators, BUILTIN\Users read-only
+if ($LASTEXITCODE -ne 0) { throw "Could not lock $pythonDir; the child could plant code there that runs as SYSTEM." }
 
 $pythonw = Join-Path $pythonDir pythonw.exe   # windowless twin, for the widget
 
