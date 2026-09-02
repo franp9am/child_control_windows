@@ -26,9 +26,10 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 2. Double-click `install.cmd`, or right-click `install.ps1` -> **Run with PowerShell**
    (either way it re-launches itself as admin).
    It asks which local account is the child's, for the shared secret (Enter generates
-   one), and optionally for the child token and URL of the parent's server. Then it
-   installs Python via winget if needed, copies the monitor into `C:\ProgramData\ScreenTime`
-   and locks that folder, puts the widget and an "Extra time" shortcut in the shared
+   one), optionally for the child token and URL of the parent's server, and where the
+   "Extra time" shortcut goes, probably `C:\Users\<child>\Desktop`.
+   Then it installs Python via winget if needed, copies the monitor into
+   `C:\ProgramData\ScreenTime` and locks that folder, puts the widget in the shared
    `C:\ProgramData\ScreenTimeShared`, and registers the two scheduled tasks.
 3. Reboot. The monitor runs from boot, the widget appears when the child logs in.
 
@@ -78,7 +79,7 @@ work too, and never outlive the day.
 **A signed code**, for when there is no server. The parent runs `create_code.py` and gets
 `<date>:<seconds>:<signature>`, e.g. `2026-07-23:3600:a184` for an extra hour. The child
 pastes it into `C:\ProgramData\ScreenTimeShared\extra_time.txt` (the "Extra time" shortcut
-on the shared desktop). The date is only a nonce, not an expiry -- a code stays valid
+the install put on the desktop). The date is only a nonce, not an expiry -- a code stays valid
 forever, but each one can be redeemed exactly once.
 
 `create_code.py` imports nothing else from the project, so copying that one

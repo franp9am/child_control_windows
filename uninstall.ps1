@@ -54,10 +54,16 @@ if (Test-Path $SharedDir) {
     Write-Host "Deleted $SharedDir" -ForegroundColor Green
 }
 
-$link = "$env:PUBLIC\Desktop\Extra time.lnk"
-if (Test-Path $link) {
-    Remove-Item -LiteralPath $link -Force
-    Write-Host "Deleted $link" -ForegroundColor Green
+# install.ps1 records where it put the shortcut; older installs always used the
+# shared desktop, so try both.
+$links = @("$env:PUBLIC\Desktop\Extra time.lnk")
+$linkFile = "$MonitorDir\data\link_path.txt"
+if (Test-Path $linkFile) { $links += [IO.File]::ReadAllText($linkFile).Trim() }
+foreach ($link in ($links | Where-Object { $_ } | Select-Object -Unique)) {
+    if (Test-Path $link) {
+        Remove-Item -LiteralPath $link -Force
+        Write-Host "Deleted $link" -ForegroundColor Green
+    }
 }
 
 if (Test-Path $MonitorDir) {

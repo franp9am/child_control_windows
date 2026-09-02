@@ -84,6 +84,22 @@ else                    { $serverUrlPrompt += " (Enter to run without server syn
 $serverUrl = (Read-Host $serverUrlPrompt).Trim()
 if (-not $serverUrl) { $serverUrl = $existingServerUrl }
 
+# Where the "Extra time" shortcut goes. The shared desktop is one file every
+# account sees, the parent's included; the child's own Desktop keeps it off yours.
+$linkFile = "$MonitorDir\data\link_path.txt"   # so uninstall.ps1 finds a non-default choice
+$defaultLinkDir = "$env:PUBLIC\Desktop"
+$previousLinkPath = ""
+if (Test-Path $linkFile) {
+    $previousLinkPath = [IO.File]::ReadAllText($linkFile).Trim()
+    if ($previousLinkPath) { $defaultLinkDir = Split-Path $previousLinkPath }
+}
+$linkDir = (Read-Host "Folder for the 'Extra time' shortcut (Enter for $defaultLinkDir)").Trim().Trim('"')
+if (-not $linkDir) { $linkDir = $defaultLinkDir }
+if (-not (Test-Path $linkDir -PathType Container)) {
+    throw "'$linkDir' is not an existing folder. Create it first, or press Enter for $defaultLinkDir."
+}
+$linkPath = Join-Path $linkDir "Extra time.lnk"
+
 # Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
 # Never trust whatever python.exe is on the admin's PATH: a per-user install under
 # that profile is unreadable from the child's account, and the widget task then
@@ -137,11 +153,14 @@ icacls $SharedDir /grant "*S-1-5-32-545:(OI)(CI)M" | Out-Null   # *S-1-5-32-545 
 Copy-Item "$src\remaining_time_widget.py" $SharedDir -Force
 if (-not (Test-Path $redeemFile)) { New-Item -ItemType File $redeemFile | Out-Null }
 
-# The shortcut goes on the shared desktop, which every account sees -- the
-# child's own Desktop folder may have been moved into OneDrive.
-$link = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:PUBLIC\Desktop\Extra time.lnk")
+# The shortcut. An earlier install may have left one in a different folder.
+if ($previousLinkPath -and $previousLinkPath -ne $linkPath -and (Test-Path $previousLinkPath)) {
+    Remove-Item -LiteralPath $previousLinkPath -Force
+}
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut($linkPath)
 $link.TargetPath = $redeemFile
 $link.Save()
+[IO.File]::WriteAllText($linkFile, $linkPath)
 
 # Task 1 -- run monitor.py as SYSTEM at every startup.
 $run  = New-ScheduledTaskAction -Execute $python -Argument "`"$MonitorDir\monitor.py`"" -WorkingDirectory $MonitorDir
