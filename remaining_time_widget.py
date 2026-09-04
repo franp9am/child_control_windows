@@ -15,17 +15,20 @@ from pathlib import Path
 DEFAULT_REMAINING_TIME_FILE = Path(__file__).parent / "remaining_time.txt"
 REMAINING_TIME_FILE_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE
 
-# The monitor rewrites the file once per check interval (60 s); well past that
-# and it has died or been killed, so the number on screen means nothing.
-STALE_AFTER_SECONDS = 150
+# The monitor rewrites the file every 60 s, except through the ~190 s shutdown it
+# starts when the time is up; past that it has died and the number means nothing.
+STALE_AFTER_SECONDS = 300
 
 # Display settings -- used by nothing but this widget.
 POLL_INTERVAL_MS = 5000
-MARGIN_PX = 20
+SIDE_MARGIN_PX = 20
+# Below the caption buttons of a maximised window. Clicks fall through the box
+# anyway, but sitting on top of them hides which one is which.
+TOP_MARGIN_PX = 38
 # Which top corner to sit in, "right" or "left". Right is the real spot; left is
 # for trying a copy out next to the one already running.
 CORNER = "right"
-OPACITY = 0.85
+OPACITY = 0.6
 FONT_FAMILY = "Segoe UI"
 FONT_SIZE = 14
 WARNING_SECONDS = 15 * 60  # orange below this
@@ -77,18 +80,18 @@ _user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
 def format_remaining(seconds):
-    """Whole hours and minutes, rounded up so anything under a minute still
-    reads as "1 minute" rather than "0 minutes"."""
+    """Hours and minutes, short enough to sit in the corner ("2h 58 min"),
+    rounded up so anything under a minute still reads as "1 min", not "0 min"."""
     seconds = max(0, seconds)
     total_minutes = math.ceil(seconds / 60)
     hours, minutes = divmod(total_minutes, 60)
 
     parts = []
     if hours:
-        parts.append(f"{hours} hour" + ("s" if hours != 1 else ""))
-    # Skip minutes only for an exact number of hours (e.g. "2 hours").
+        parts.append(f"{hours}h")
+    # Skip minutes only for an exact number of hours (e.g. "2h").
     if minutes or not hours:
-        parts.append(f"{minutes} minute" + ("s" if minutes != 1 else ""))
+        parts.append(f"{minutes} min")
     return " ".join(parts)
 
 
@@ -150,8 +153,8 @@ class RemainingTimeWidget:
         self.root.update_idletasks()
         width = self.root.winfo_reqwidth()
         screen_width = self.root.winfo_screenwidth()
-        x = MARGIN_PX if CORNER == "left" else screen_width - width - MARGIN_PX
-        y = MARGIN_PX
+        x = SIDE_MARGIN_PX if CORNER == "left" else screen_width - width - SIDE_MARGIN_PX
+        y = TOP_MARGIN_PX
         self.root.geometry(f"+{x}+{y}")
 
     def check_hotkey(self):
@@ -182,9 +185,9 @@ class RemainingTimeWidget:
             remaining = int(REMAINING_TIME_FILE_PATH.read_text(encoding="utf-8").strip())
         except Exception:
             return None
-        # A stale zero still means the time is up: the monitor writes 0 and then
-        # exits to shut the machine down, so nothing refreshes the file after it.
-        if remaining > 0 and age > STALE_AFTER_SECONDS:
+        # A reboot can bring granted time or a new day, so an old number may be
+        # wrong and not just late; say nothing until the monitor publishes again.
+        if age > STALE_AFTER_SECONDS:
             return None
         return remaining
 
@@ -197,7 +200,7 @@ class RemainingTimeWidget:
             text = "Time's up"
             color = COLOR_CRITICAL
         else:
-            text = f"{format_remaining(remaining)} remaining"
+            text = format_remaining(remaining)
             color = color_for(remaining)
 
         self.label.config(text=text, fg=color)
