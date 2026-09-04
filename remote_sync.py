@@ -15,8 +15,8 @@ from config import (
     APPLIED_GRANTS_FILE,
     CHILD_TOKEN_FILE,
     MONITOR_VERSION,
-    REJECTED_SETTINGS_FILE,
     SERVER_URL,
+    SETTINGS_CHANGE_OUTCOME_FILE,
     SYNC_TIMEOUT_SECONDS,
 )
 
@@ -31,11 +31,9 @@ class DailyStatus:
     granted_sec: int
     remaining_sec: int
     last_tick: Optional[str]
-    # the settings in force, so the server can resend its own until this matches
-    settings: dict
-    # the last settings dict the server sent that this monitor refused, verbatim,
-    # so the server can tell delivered-and-refused from never delivered
-    rejected_settings: Optional[dict] = None
+    settings: dict  # in force
+    # {"id": <change id>, "taken": <bool>} for the last change the server delivered
+    settings_change_outcome: Optional[dict] = None
 
 
 @dataclass
@@ -45,12 +43,15 @@ class Grant:
 
 
 @dataclass
-class SyncAnswer:
-    """Time grants, plus every setting the server wants in force (config.SETTINGS
-    names). None means it said nothing about them."""
+class SettingsChange:
+    id: int
+    settings: dict  # every setting the server wants in force, by config.SETTINGS name
 
+
+@dataclass
+class SyncAnswer:
     pending_grants: List[Grant]
-    settings: Optional[dict]
+    settings_change: Optional[SettingsChange]
 
 
 def load_child_token() -> str:
@@ -83,25 +84,20 @@ def save_applied_grant_ids(grant_ids):
     os.replace(tmp_file, APPLIED_GRANTS_FILE)  # make the write atomic
 
 
-def load_rejected_settings() -> Optional[dict]:
-    """The last server settings this monitor refused; None when none stands refused."""
+def load_settings_change_outcome() -> Optional[dict]:
     try:
-        with open(REJECTED_SETTINGS_FILE, "r", encoding="utf-8") as f:
-            rejected = json.load(f)
-        return rejected if isinstance(rejected, dict) else None
+        with open(SETTINGS_CHANGE_OUTCOME_FILE, "r", encoding="utf-8") as f:
+            outcome = json.load(f)
+        return outcome if isinstance(outcome, dict) else None
     except Exception:
         return None
 
 
-def save_rejected_settings(rejected: Optional[dict]) -> None:
-    """None means the refusal is over: an accepted change supersedes it."""
-    if rejected is None:
-        REJECTED_SETTINGS_FILE.unlink(missing_ok=True)
-        return
-    tmp_file = REJECTED_SETTINGS_FILE.with_suffix(".tmp")
+def save_settings_change_outcome(change_id: int, taken: bool) -> None:
+    tmp_file = SETTINGS_CHANGE_OUTCOME_FILE.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(rejected, f)
-    os.replace(tmp_file, REJECTED_SETTINGS_FILE)  # make the write atomic
+        json.dump({"id": change_id, "taken": taken}, f)
+    os.replace(tmp_file, SETTINGS_CHANGE_OUTCOME_FILE)  # make the write atomic
 
 
 def send_status(
@@ -126,11 +122,15 @@ def send_status(
     )
     with urllib.request.urlopen(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
         answer = json.load(response)
-    settings = answer.get("settings")
+    change = answer.get("settings_change")
     return SyncAnswer(
         pending_grants=[
             Grant(id=int(grant["id"]), seconds=int(grant["seconds"]))
             for grant in answer["pending_grants"]
         ],
-        settings=settings if isinstance(settings, dict) else None,
+        settings_change=(
+            SettingsChange(id=int(change["id"]), settings=dict(change["settings"]))
+            if isinstance(change, dict)
+            else None
+        ),
     )

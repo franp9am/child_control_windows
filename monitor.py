@@ -317,11 +317,11 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         remaining_sec=remaining_seconds(data, settings),
         last_tick=data["last_tick"],
         settings=settings,
-        rejected_settings=remote_sync.load_rejected_settings(),
+        settings_change_outcome=remote_sync.load_settings_change_outcome(),
     )
-    already_applied = remote_sync.load_applied_grant_ids()
+    applied_grant_ids = remote_sync.load_applied_grant_ids()
     try:
-        answer = remote_sync.send_status(status, already_applied, token)
+        answer = remote_sync.send_status(status, applied_grant_ids, token)
     except Exception:
         return settings  # offline is the normal case, not a crash
 
@@ -331,23 +331,17 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
         send_message(message=f"extra time {grant.seconds}")
-    if answer.settings is not None:
-        # Stored, so they outlive this run and stay in force while the server
-        # is unreachable.
-        in_force = config.save_settings(answer.settings)
-        # all or nothing, and the server always sends every setting, so anything
-        # but an exact match means the monitor would not take what it asked for
-        if in_force == answer.settings:
-            data["event_log"].append(f"server settings {in_force} {now_str}")
-            remote_sync.save_rejected_settings(None)
-        else:
-            data["event_log"].append(
-                f"server settings refused {answer.settings}, in force {in_force} {now_str}"
-            )
-            remote_sync.save_rejected_settings(answer.settings)
+    change = answer.settings_change
+    if change is not None:
+        in_force = config.save_settings(change.settings)
+        taken = all(in_force.get(name) == value for name, value in change.settings.items())
+        verdict = "taken" if taken else "refused"
+        data["event_log"].append(f"server settings {verdict} {change.settings} {now_str}")
+        remote_sync.save_settings_change_outcome(change.id, taken)
         settings = in_force
-    if answer.pending_grants or already_applied or answer.settings is not None:
+    if answer.pending_grants or change is not None:
         save_data(data, datafile)
+    if answer.pending_grants or applied_grant_ids:
         remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])
     return settings
 

@@ -24,6 +24,11 @@ DISPLAY_TIMEZONE = ZoneInfo("Europe/Prague")
 LOGOUT_LOGIN = "logout"
 
 
+class SettingsChangeOutcome(BaseModel):
+    id: int  # of the settings change
+    taken: bool
+
+
 class SyncRequest(BaseModel):
     date: str
     time_spent_sec: int
@@ -34,9 +39,8 @@ class SyncRequest(BaseModel):
     applied_grant_ids: list[int]
     # the settings in force on the child; None from a client too old to say
     settings: dict | None = None
-    # the last settings dict the server sent that the child refused, verbatim;
-    # None when nothing stands refused, or from a client too old to say
-    rejected_settings: dict | None = None
+    # of the last change delivered to the child; None before any
+    settings_change_outcome: SettingsChangeOutcome | None = None
 
 
 class PendingGrant(BaseModel):
@@ -44,9 +48,14 @@ class PendingGrant(BaseModel):
     seconds: int
 
 
+class SettingsChange(BaseModel):
+    id: int
+    settings: dict
+
+
 class SyncResponse(BaseModel):
     pending_grants: list[PendingGrant]
-    settings: dict | None = None
+    settings_change: SettingsChange | None = None
 
 
 @dataclass
@@ -408,40 +417,24 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                ORDER BY id""",
             {"child_id": child_id},
         ).fetchall()
-        # Sent until the child answers it, then never again: the answer is
-        # recorded on the row and the change is over. What the settings file
-        # holds after that is the machine's own business, until a parent asks
-        # for something new.
-        settings_to_send = None
+        change_to_send = None
         wanted = wanted_settings(connection, child_id)
         if wanted is not None and wanted["outcome"] is None:
-            settings = json.loads(wanted["settings"])
-            if settings == reported_settings and sync_request.rejected_settings is None:
-                outcome = "taken"
-            elif settings == reported_settings:
-                # Already in force, so there is nothing to put in force -- but a
-                # refusal standing on the machine ends only when a change is
-                # delivered and taken, and this is the parent asking for exactly
-                # that. Send it, and let the next sync record the answer.
-                outcome = None
-                settings_to_send = settings
-            elif settings == sync_request.rejected_settings:
-                outcome = "refused"
-            else:
-                # Neither in force nor refused: this child has not answered yet,
-                # or is a fresh install that never heard the question. Ask again.
-                outcome = None
-                settings_to_send = settings
-            if outcome is not None:
+            outcome = sync_request.settings_change_outcome
+            if outcome is not None and outcome.id == wanted["id"]:
                 connection.execute(
                     """UPDATE settings_changes SET outcome = :outcome
                        WHERE id = :change_id""",
-                    {"outcome": outcome, "change_id": wanted["id"]},
+                    {"outcome": "taken" if outcome.taken else "refused", "change_id": wanted["id"]},
+                )
+            else:
+                change_to_send = SettingsChange(
+                    id=wanted["id"], settings=json.loads(wanted["settings"])
                 )
     connection.close()
     return SyncResponse(
         pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending],
-        settings=settings_to_send,
+        settings_change=change_to_send,
     )
 
 

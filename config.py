@@ -24,7 +24,7 @@ SECRET_FILE = DATA_DIR / "secret.txt"
 SERVER_URL = ""
 CHILD_TOKEN_FILE = DATA_DIR / "child_token.txt"  # from add_child.py on the server
 APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
-REJECTED_SETTINGS_FILE = DATA_DIR / "rejected_settings.json"  # the last server settings refused
+SETTINGS_CHANGE_OUTCOME_FILE = DATA_DIR / "settings_change_outcome.json"  # of the last change delivered
 SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 
 CHECK_INTERVAL_SECONDS = 60
