@@ -40,8 +40,10 @@ CREATE TABLE IF NOT EXISTS settings_changes (
     changed_by INTEGER NOT NULL REFERENCES parents(id),
     settings TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    -- when the child confirmed receiving this change; taken or refused
-    delivered_at TEXT
+    -- how the child answered: NULL until it answers, then 'taken' or 'refused'.
+    -- Terminal: a change is sent only while this is NULL, so between changes the
+    -- settings file on the machine is the one that counts.
+    outcome TEXT
 );
 CREATE TABLE IF NOT EXISTS status (
     child_id INTEGER NOT NULL REFERENCES children(id),

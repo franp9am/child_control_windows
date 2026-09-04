@@ -72,8 +72,8 @@ class LastSeenView:
 @dataclass
 class SettingsView:
     in_force: str
-    waiting_since: str | None  # when a parent asked for something the child has yet to confirm
-    refused: str | None  # the delivered change the child would not take, in words
+    waiting_since: str | None  # when a parent asked for something the child has yet to answer
+    refused: str | None  # the change the child answered with a refusal, in words
 
 
 @dataclass
@@ -191,7 +191,7 @@ def pending_grants(connection: sqlite3.Connection, child_id: int) -> list[GrantV
 
 def wanted_settings(connection: sqlite3.Connection, child_id: int) -> sqlite3.Row | None:
     return connection.execute(
-        """SELECT id, settings, created_at, delivered_at FROM settings_changes
+        """SELECT id, settings, created_at, outcome FROM settings_changes
            WHERE child_id = :child_id
            ORDER BY id DESC
            LIMIT 1""",
@@ -230,16 +230,16 @@ def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView
         return SettingsView(
             in_force="not reported by this monitor", waiting_since=None, refused=None
         )
-    reported = json.loads(row["reported_settings"])
+    # What is in force is what the child reports, always. The change row says
+    # only how the last question was answered -- nothing here infers the child's
+    # state from a comparison, so a machine we have not heard from cannot be
+    # made to look like one that refused something.
     wanted = wanted_settings(connection, child_id)
-    unconfirmed = wanted is not None and json.loads(wanted["settings"]) != reported
-    # delivered yet still unequal is the child's refusal; undelivered is transit
-    refused = unconfirmed and wanted["delivered_at"] is not None
+    unanswered = wanted is not None and wanted["outcome"] is None
+    refused = wanted is not None and wanted["outcome"] == "refused"
     return SettingsView(
-        in_force=settings_in_words(reported),
-        waiting_since=(
-            formatted_local_time(wanted["created_at"]) if unconfirmed and not refused else None
-        ),
+        in_force=settings_in_words(json.loads(row["reported_settings"])),
+        waiting_since=formatted_local_time(wanted["created_at"]) if unanswered else None,
         refused=settings_in_words(json.loads(wanted["settings"])) if refused else None,
     )
 
@@ -270,7 +270,7 @@ def settings_fields(connection: sqlite3.Connection, child_id: int) -> list[Setti
         return None
     prefill = reported
     wanted = wanted_settings(connection, child_id)
-    if wanted is not None and wanted["delivered_at"] is None:
+    if wanted is not None and wanted["outcome"] is None:
         prefill = json.loads(wanted["settings"])  # an ask still in transit wins
     return [
         SettingsField(name=name, value=json.dumps(prefill.get(name, value)))
@@ -408,30 +408,29 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
                ORDER BY id""",
             {"child_id": child_id},
         ).fetchall()
-        # Sent only until the child echoes it back, in force or refused; a lost
-        # echo is harmless, the child refuses the resend and echoes again
+        # Sent until the child answers it, then never again: the answer is
+        # recorded on the row and the change is over. What the settings file
+        # holds after that is the machine's own business, until a parent asks
+        # for something new.
         settings_to_send = None
         wanted = wanted_settings(connection, child_id)
-        if wanted is not None:
+        if wanted is not None and wanted["outcome"] is None:
             settings = json.loads(wanted["settings"])
-            if settings in (reported_settings, sync_request.rejected_settings):
-                # proof of delivery, keep settings_to_send None (no need to repeat)
-                connection.execute(
-                    """UPDATE settings_changes SET delivered_at = :now
-                       WHERE id = :change_id AND delivered_at IS NULL""",
-                    {"now": now, "change_id": wanted["id"]},
-                )
+            if settings == reported_settings:
+                outcome = "taken"
+            elif settings == sync_request.rejected_settings:
+                outcome = "refused"
             else:
-                # No delivery proof: this child does not have the change and did
-                # not refuse it, so any proof on the row is from an install that
-                # is gone -- a reused token on a fresh machine. Dropping it keeps
-                # the page saying "waiting" rather than inventing a refusal.
+                # Neither in force nor refused: this child has not answered yet,
+                # or is a fresh install that never heard the question. Ask again.
+                outcome = None
+                settings_to_send = settings
+            if outcome is not None:
                 connection.execute(
-                    """UPDATE settings_changes SET delivered_at = NULL
+                    """UPDATE settings_changes SET outcome = :outcome
                        WHERE id = :change_id""",
-                    {"change_id": wanted["id"]},
+                    {"outcome": outcome, "change_id": wanted["id"]},
                 )
-                settings_to_send = settings  # send request again
     connection.close()
     return SyncResponse(
         pending_grants=[PendingGrant(id=row["id"], seconds=row["seconds"]) for row in pending],
