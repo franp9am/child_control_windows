@@ -416,8 +416,15 @@ def sync(http_request: Request, sync_request: SyncRequest) -> SyncResponse:
         wanted = wanted_settings(connection, child_id)
         if wanted is not None and wanted["outcome"] is None:
             settings = json.loads(wanted["settings"])
-            if settings == reported_settings:
+            if settings == reported_settings and sync_request.rejected_settings is None:
                 outcome = "taken"
+            elif settings == reported_settings:
+                # Already in force, so there is nothing to put in force -- but a
+                # refusal standing on the machine ends only when a change is
+                # delivered and taken, and this is the parent asking for exactly
+                # that. Send it, and let the next sync record the answer.
+                outcome = None
+                settings_to_send = settings
             elif settings == sync_request.rejected_settings:
                 outcome = "refused"
             else:
