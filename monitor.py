@@ -181,22 +181,6 @@ except Exception:
     raise
 
 
-def user_logged_in(user=TARGET_USER) -> bool:
-    """Whether the child is logged in with the screen unlocked, which is the
-    only question the loop asks. The legacy fallback covers a windows whose
-    session API will not answer; it cannot see a locked screen, so it errs
-    towards "the child is here" rather than towards unlimited screen time."""
-    try:
-        return any(name.lower() == user.lower()
-                   for name in os_tooling.users_at_screen().values())
-    except OSError:
-        return os_tooling.legacy_user_logged_in(user)
-
-
-def send_message(message, user=TARGET_USER):
-    os_tooling.notify(message, user)
-
-
 def verify(msg: bytes, sig_hex: str) -> bool:
     expected = hmac.new(SECRET, msg, hashlib.sha256).hexdigest()[:SIGNATURE_CHARS]
     return expected == sig_hex
@@ -330,7 +314,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
     for grant in answer.pending_grants:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
-        send_message(message=f"extra time {grant.seconds}")
+        os_tooling.notify(f"extra time {grant.seconds}", TARGET_USER)
     change = answer.settings_change
     if change is not None:
         in_force = config.save_settings(change.settings)
@@ -387,7 +371,7 @@ def main():
         datafile = get_datafile(now)
         settings = config.get_config()
         data = ensure_datafile(datafile, now, settings)
-        if user_logged_in():
+        if os_tooling.user_logged_in(TARGET_USER):
             settings = sync_with_server(data, datafile, now, settings)
         write_remaining_time_file(remaining_seconds(data, settings))
     except Exception:
@@ -407,12 +391,12 @@ def main():
             settings = config.get_config()
             data = ensure_datafile(datafile, now, settings)
 
-            is_logged_in = user_logged_in()
+            is_logged_in = os_tooling.user_logged_in(TARGET_USER)
 
             if is_logged_in:
                 if is_night_time(now, settings):
                     write_remaining_time_file(0)
-                    send_message(message="Night time")
+                    os_tooling.notify("Night time", TARGET_USER)
                     data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
                     sync_with_server(data, datafile, now, settings)
@@ -431,14 +415,14 @@ def main():
                         extra_time = redeem["extra_time_sec"]
                         data["event_log"].append(f"redeem code {extra_time} {now_str}")
                         data["granted_sec"] += extra_time
-                        send_message(message=f"extra time {extra_time}")
+                        os_tooling.notify(f"extra time {extra_time}", TARGET_USER)
                         save_data(data, datafile)
 
                 settings = sync_with_server(data, datafile, now, settings)
 
                 if remaining_seconds(data, settings) <= 0:
                     write_remaining_time_file(0)
-                    send_message(message="time up")
+                    os_tooling.notify("time up", TARGET_USER)
                     data["event_log"].append(f"time up {now_str}")
                     save_data(data, datafile)
                     # last word before the machine goes down: without it the page

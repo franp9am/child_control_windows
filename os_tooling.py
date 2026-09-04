@@ -88,6 +88,17 @@ def users_at_screen() -> dict[int, str]:
     return {id_: user for id_, (user, at_screen) in _sessions().items() if at_screen}
 
 
+def user_logged_in(user: str) -> bool:
+    """Whether that user is logged in with the screen unlocked, which is the
+    only question the monitor asks. The legacy fallback covers a windows whose
+    session API will not answer; it cannot see a locked screen, so it errs
+    towards "the child is here" rather than towards unlimited screen time."""
+    try:
+        return any(name.lower() == user.lower() for name in users_at_screen().values())
+    except OSError:
+        return legacy_user_logged_in(user)
+
+
 def notify(message: str, user: str) -> None:
     title = "Screen time"
     clicked_button = wintypes.DWORD()

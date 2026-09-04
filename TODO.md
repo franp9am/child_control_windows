@@ -7,7 +7,6 @@
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into a new date and a fresh daily limit.
 * The same atomic write (temp file + `os.replace`) is copied all over; it wants one
   shared home.
-* `send_message` and `user_logged_in` could move to `os_tooling.py`, if the user is passed in.
 * No tests. Start with the pure logic: `compute_carryover_sec`, `seconds_to_charge`,
   `handle_redeem_file`, `config.validated_settings`. Client bugs are expensive after the freeze.
 
