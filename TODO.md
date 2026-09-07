@@ -7,8 +7,7 @@ Ordered by importance within each section.
 * Auto-update: a launcher that fetches a newer monitor from the server, verifies
   it, and then runs it. Everything below becomes deliverable without touching the
   machine again. The code it fetches runs as SYSTEM, so a release must carry a
-  signature (HMAC with the shared secret, or a pinned public key) and an
-  unverified one is ignored. The server needs a place to host releases.
+  signature and an unverified one is ignored. 
 * Tests, before more client changes. Start with the pure logic:
   `compute_carryover_sec`, `seconds_to_charge`, `handle_redeem_file`,
   `config.validated_settings`.
