@@ -11,11 +11,6 @@ Ordered by importance within each section.
 * Tests, before more client changes. Start with the pure logic:
   `compute_carryover_sec`, `seconds_to_charge`, `handle_redeem_file`,
   `config.validated_settings`.
-* Private Python instead of winget: download the pinned python.org installer
-  (full installer, the embeddable zip has no tkinter for the widget), check its
-  SHA-256, install it into a folder that belongs to the monitor. Today the
-  installer hardens whatever machine-wide Python it finds, which may be the
-  parent's own interpreter.
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into
@@ -54,5 +49,4 @@ Ordered by importance within each section.
 ## Someday / maybe
 
 * Full client rewrite in C# with an exe installer. If this is real, the
-  launcher and the private Python above are throwaway work; decide before
-  starting either.
+  launcher above is throwaway work; decide before starting it.

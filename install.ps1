@@ -1,5 +1,6 @@
 $ErrorActionPreference = "Stop"
 $MonitorDir = "C:\ProgramData\ScreenTime"   # monitor + data; hidden from the child
+$PythonDir  = "C:\ProgramData\ScreenTimePython"   # its own interpreter; readable by the child
 
 # Re-launch as administrator if we aren't already.
 $admin = [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -100,34 +101,58 @@ if (-not (Test-Path $linkDir -PathType Container)) {
 }
 $linkPath = Join-Path $linkDir "Extra time.lnk"
 
-# Install Python machine-wide if it's missing (the widget needs its bundled tkinter).
-# Never trust whatever python.exe is on the admin's PATH: a per-user install under
-# that profile is unreadable from the child's account, and the widget task then
-# dies with Access Denied.
-$targetDir = "C:\Program Files\Python311"
-# C:\Python3* is where older runs of this script installed. Kept in the search so
-# those machines are found and hardened below rather than given a second Python.
-$python = (Get-ChildItem "C:\Program Files\Python3*\python.exe", "C:\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-if (-not $python) {
-    # --scope machine alone isn't enough: if the same version exists per-user,
-    # the installer converts it in place instead of installing fresh under
-    # Program Files; the explicit TargetDir prevents that.
-    # The \" is what carries the space in the path through PowerShell -> winget -> installer.
-    $override = '/quiet InstallAllUsers=1 PrependPath=0 TargetDir=\"' + $targetDir + '\"'
-    winget install --id Python.Python.3.11 -e --scope machine --accept-package-agreements --accept-source-agreements --override $override
-    $python = (Get-ChildItem "$targetDir\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+# A private Python for the two tasks, so the parent's own is neither touched nor
+# trusted. These four MSIs are python.org's installer without pip, docs, tests and
+# the launcher; "msiexec /a" unpacks them without registering anything. To upgrade,
+# change the version and the hashes (of https://www.python.org/ftp/python/<v>/amd64/<part>.msi).
+$PythonVersion = "3.13.15"
+$PythonParts = [ordered]@{
+    core  = "eff25b160b54a77c5953cf5803fc147a1ced084513265dfefc227583b1355484"
+    exe   = "47f02452bde1f05b4d06fb93841ce380624c882ef75caddd1b1207d1a36bb4d2"
+    lib   = "6d3130114d7f57eaa33d86e8366a669dfc73cfe8df772bef93ce2d9ea799f751"
+    tcltk = "ec1e0fe1188969a48da63f24536183c95fc0393cf93588c646b253e91dc9b179"
 }
-if (-not $python) { throw "Could not find or install a machine-wide Python under C:\Program Files." }
-$pythonDir = Split-Path $python
+$python = "$PythonDir\python.exe"
+
+# tkinter is in the last MSI, so a copy that imports it at the pinned version is complete.
+$installedVersion = ""
+if (Test-Path $python) {
+    try { $installedVersion = & $python -c "import sys, tkinter; print('%d.%d.%d' % sys.version_info[:3])" 2>$null } catch { }
+}
+if ($installedVersion -ne $PythonVersion) {
+    Write-Host "Downloading Python $PythonVersion from python.org (about 13 MB)..."
+    $downloadDir = Join-Path $env:TEMP "ScreenTimePython"
+    New-Item -ItemType Directory -Force $downloadDir | Out-Null
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = "SilentlyContinue"   # the progress bar makes Invoke-WebRequest many times slower
+    foreach ($part in $PythonParts.Keys) {
+        $msi = Join-Path $downloadDir "$part.msi"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://www.python.org/ftp/python/$PythonVersion/amd64/$part.msi" -OutFile $msi
+        if ((Get-FileHash -Algorithm SHA256 $msi).Hash -ne $PythonParts[$part]) { throw "$part.msi does not match its pinned SHA-256; not installing it." }
+    }
+    # Only now is an older copy touched, so a failed download leaves a working monitor.
+    # A running one holds the DLLs open; it starts again at the next boot anyway.
+    if (Test-Path $PythonDir) {
+        foreach ($t in "ScreenTimeMonitor", "ScreenTimeWidget") { Stop-ScheduledTask $t -ErrorAction SilentlyContinue }
+        Get-Process python, pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$PythonDir\*" } | Stop-Process -Force
+        Remove-Item -LiteralPath $PythonDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force $PythonDir | Out-Null
+    foreach ($part in $PythonParts.Keys) {
+        $p = Start-Process msiexec.exe -ArgumentList "/a `"$downloadDir\$part.msi`" /qn TARGETDIR=`"$PythonDir`"" -Wait -PassThru
+        if ($p.ExitCode -ne 0) { throw "msiexec could not unpack $part.msi (exit code $($p.ExitCode))." }
+    }
+    Remove-Item "$PythonDir\*.msi", $downloadDir -Recurse -Force   # /a leaves a copy of each package next to the files
+    & $python -m compileall -q "$PythonDir\Lib" | Out-Null   # the child's account cannot write .pyc files here
+}
 
 # monitor.py runs as SYSTEM on this interpreter, so the child must not be able to
-# write into it: a sitecustomize.py or .pth planted in Lib\site-packages would run
-# as SYSTEM at every boot. Program Files already forbids that, but a folder at the
-# root of C:\ inherits an ACE that lets any user create files inside it.
-icacls $pythonDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # SYSTEM, Administrators, BUILTIN\Users read-only
-if ($LASTEXITCODE -ne 0) { throw "Could not lock $pythonDir; the child could plant code there that runs as SYSTEM." }
+# write into it: a sitecustomize.py or .pth planted in Lib would run as SYSTEM at
+# every boot. ProgramData would otherwise let any user create files inside it.
+icacls $PythonDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null   # SYSTEM, Administrators, BUILTIN\Users read-only
+if ($LASTEXITCODE -ne 0) { throw "Could not lock $PythonDir; the child could plant code there that runs as SYSTEM." }
 
-$pythonw = Join-Path $pythonDir pythonw.exe   # windowless twin, for the widget
+$pythonw = Join-Path $PythonDir pythonw.exe   # windowless twin, for the widget
 
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
 # That lock is what stops the child reading data\secret.txt and forging codes.

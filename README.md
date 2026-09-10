@@ -25,9 +25,11 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
    It asks which local account is the child's, for the shared secret (Enter generates
    one), optionally for the child token and URL of the parent's server, and where the
    "Extra time" shortcut goes, probably `C:\Users\<child>\Desktop`.
-   Then it installs Python via winget if needed, copies the monitor into
-   `C:\ProgramData\ScreenTime` and locks that folder, puts the widget in the shared
-   `C:\ProgramData\ScreenTimeShared`, and registers the two scheduled tasks.
+   Then it downloads its own Python from python.org into `C:\ProgramData\ScreenTimePython`
+   (about 13 MB, checked against hashes pinned in the script; this is the one step
+   that needs internet), copies the monitor into `C:\ProgramData\ScreenTime` and locks
+   that folder, puts the widget in the shared `C:\ProgramData\ScreenTimeShared`, and
+   registers the two scheduled tasks.
 3. Reboot. The monitor runs from boot, the widget appears when the child logs in.
 
 If the installer generated the secret, it prints it at the end -- the parent's machine
@@ -128,7 +130,13 @@ does not authenticate, or a client could name any parent it likes.
 
 ## Python dependencies
 
-None on the child's machine. The server has its own, in `server/pyproject.toml`.
+None on the child's machine, and no Python needs to be installed there: the installer
+unpacks a private copy of a pinned python.org release for the monitor and the widget,
+leaving any Python the parent has alone. Nothing is registered with Windows, so it does
+not show up in Apps & Features; `uninstall.cmd` deletes it. To move to a newer release,
+change `$PythonVersion` and the four SHA-256 hashes at the top of the Python block in
+`install.ps1` and run the installer again. The server has its own dependencies, in
+`server/pyproject.toml`.
 
 ## License
 

@@ -2,14 +2,15 @@
     uninstall.ps1 -- removes what install.ps1 set up.
 
     Right-click -> "Run with PowerShell" (it self-elevates). It unregisters the
-    two scheduled tasks, deletes the install folders and removes the desktop
-    shortcut. Pass -KeepData to leave the data\ folder (used codes, per-day
-    json) in place.
+    two scheduled tasks, deletes the install folders (the monitor's private
+    Python included) and removes the desktop shortcut. Pass -KeepData to leave
+    the data\ folder (used codes, per-day json) in place.
 #>
 [CmdletBinding()]
 param(
     [string]$MonitorDir = "C:\ProgramData\ScreenTime",
     [string]$SharedDir  = "C:\ProgramData\ScreenTimeShared",
+    [string]$PythonDir  = "C:\ProgramData\ScreenTimePython",
     [string]$MonitorTaskName = "ScreenTimeMonitor",
     [string]$WidgetTaskName  = "ScreenTimeWidget",
     [switch]$KeepData
@@ -37,12 +38,13 @@ foreach ($t in @($MonitorTaskName, $WidgetTaskName)) {
 }
 
 # Stopping the task doesn't always kill an already-running instance launched by
-# a previous boot, so also kill any monitor.py/widget process directly by
-# command line before deleting their folders.
+# a previous boot, so also kill any monitor.py/widget process directly, by
+# command line or by the interpreter it runs on, before deleting their folders.
 Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" |
     Where-Object {
         $_.CommandLine -match [regex]::Escape($MonitorDir) -or
-        $_.CommandLine -match [regex]::Escape($SharedDir)
+        $_.CommandLine -match [regex]::Escape($SharedDir) -or
+        $_.ExecutablePath -like "$PythonDir\*"
     } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
@@ -52,6 +54,11 @@ Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.ex
 if (Test-Path $SharedDir) {
     Remove-Item -LiteralPath $SharedDir -Recurse -Force
     Write-Host "Deleted $SharedDir" -ForegroundColor Green
+}
+
+if (Test-Path $PythonDir) {
+    Remove-Item -LiteralPath $PythonDir -Recurse -Force
+    Write-Host "Deleted $PythonDir" -ForegroundColor Green
 }
 
 # install.ps1 records where it put the shortcut; older installs always used the
