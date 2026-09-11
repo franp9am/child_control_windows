@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Bumped by hand, reported on every sync; the parent's page displays it and
 # nothing branches on it.
-MONITOR_VERSION = "0.3.0"
+MONITOR_VERSION = "0.4.0"
 
 # Every local account may read and write here, so nothing in it is trusted.
 SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
@@ -35,12 +35,20 @@ NIGHT_SHUTDOWN_DELAY_SECONDS = 120  # grace period outside the allowed hours
 STARTUP_DELAY_SECONDS = 40  # wait after boot before the first check
 NETWORK_WARMUP_SECONDS = 20
 
+WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # in date.weekday() order
+DAILY_LIMIT_RANGE = range(24 * 60 * 60 + 1)
+
 # Read these through get_config(), never directly: SETTINGS_FILE holds what is in force,
 # and these are only what a machine starts with and falls back to.
 SETTINGS = {
     "DAILY_LIMIT_SECONDS": {
         "default": 1 * 60 * 60,
-        "allowed": range(24 * 60 * 60 + 1)
+        "allowed": DAILY_LIMIT_RANGE
+    },
+    "DAILY_LIMIT_OVERRIDES": {
+        # a weekday named here gets its own limit, e.g. {"mon": 1800}
+        "default": {},
+        "allowed": {"keys": WEEKDAY_NAMES, "values": DAILY_LIMIT_RANGE},
     },
     "CARRYOVER": {
         "default": True,
@@ -70,15 +78,25 @@ def default_settings() -> dict:
     return {name: setting["default"] for name, setting in SETTINGS.items()}
 
 
+def is_int_in(value, allowed: range) -> bool:
+    # bool is an int subclass: without the exclusion, True would pass as 1
+    return isinstance(value, int) and not isinstance(value, bool) and value in allowed
+
+
 def value_allowed(name: str, value) -> bool:
     if value is None:
         return SETTINGS[name].get("nullable", False)
     allowed = SETTINGS[name]["allowed"]
     if isinstance(allowed, range):
-        # bool is an int subclass: without the exclusion, True would pass as 1
-        return isinstance(value, int) and not isinstance(value, bool) and value in allowed
+        return is_int_in(value, allowed)
     elif isinstance(allowed, tuple):
         return type(value) is type(allowed[0]) and value in allowed
+    elif isinstance(allowed, dict):
+        # a dict with keys from "keys" and int values in the "values" range; empty is fine
+        return isinstance(value, dict) and all(
+            key in allowed["keys"] and is_int_in(item, allowed["values"])
+            for key, item in value.items()
+        )
     else:
         # an "allowed" spec this function doesn't handle is a bug in SETTINGS;
         # dropping the value keeps the monitor ticking
@@ -91,7 +109,7 @@ def validated_settings(stored: dict, fallback=None) -> dict:
 
     `fallback` is what is already in force, or the defaults when nothing is. It
     also supplies any setting `stored` does not mention, which is how a machine
-    upgraded to a monitor with a new setting keeps the four it already had.
+    upgraded to a monitor with a new setting keeps the ones it already had.
     """
     if fallback is None:
         fallback = default_settings()

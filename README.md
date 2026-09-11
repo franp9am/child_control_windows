@@ -71,14 +71,15 @@ The installer does **not** do these, and without them the setup is bypassable:
 
 ## Settings
 
-The five settings the monitor obeys live in `data/settings.json`, next to the monitor
-where the child cannot read them: `DAILY_LIMIT_SECONDS`, `CARRYOVER` (unused time rolls
-over to the next day), `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and
-`LATEST_HOUR_INCLUDED`. Example:
+The six settings the monitor obeys live in `data/settings.json`, next to the monitor
+where the child cannot read them: `DAILY_LIMIT_SECONDS`, `DAILY_LIMIT_OVERRIDES` (a
+different limit on some weekdays), `CARRYOVER` (unused time rolls over to the next day),
+`MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED`. Example:
 
 ```json
 {
   "DAILY_LIMIT_SECONDS": 3600,
+  "DAILY_LIMIT_OVERRIDES": {"mon": 1800, "sat": 7200},
   "CARRYOVER": true,
   "MAX_CARRYOVER_SECONDS": 18000,
   "EARLIEST_HOUR_INCLUDED": 6,
@@ -86,16 +87,21 @@ over to the next day), `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and
 }
 ```
 
-One hour a day, usable between 6:00 and 20:59 -- the night starts at 21:00 and ends at
-6:00 -- with unused time carried over, but never more than five hours of it. A
-`MAX_CARRYOVER_SECONDS` of `null` carries everything over, with no cap.
+One hour a day, but half an hour on Mondays and two on Saturdays, usable between 6:00
+and 20:59 -- the night starts at 21:00 and ends at 6:00 -- with unused time carried over,
+but never more than five hours of it. A `MAX_CARRYOVER_SECONDS` of `null` carries
+everything over, with no cap.
+
+`DAILY_LIMIT_OVERRIDES` takes the days `mon` to `sun`, each with its limit in seconds;
+`{}` means every day is the same. Only the limit changes, the hours are the same every
+day. When the machine was off for some days, carryover credits each of them its own limit.
 
 Edit that file, or let the parent's server set them. Delete it and
 the monitor falls back to the defaults in `config.py`, writing the file again at its
 next start.
 
 `config.py` holds the rest -- paths, the check interval, the shutdown grace periods -- and,
-in its `SETTINGS` dict, the `default` and `allowed` values for the five above. Those
+in its `SETTINGS` dict, the `default` and `allowed` values for the six above. Those
 defaults seed `settings.json` on a machine that has none and stand in for any value in it
 that is missing or out of range, so a mangled file cannot leave the machine unrestricted.
 Read settings through `get_config()`, never straight from `SETTINGS`.

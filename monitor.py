@@ -65,7 +65,7 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
 
 
 def compute_carryover_sec(today: datetime.date, settings) -> int:
-    """Leftover time from the last day with data, plus a full daily limit for
+    """Leftover time from the last day with data, plus its own full limit for
     every calendar day in between that has no data file (machine was off),
     capped at MAX_CARRYOVER_SECONDS unless that is None."""
     prev_file = find_previous_datafile(today)
@@ -73,9 +73,12 @@ def compute_carryover_sec(today: datetime.date, settings) -> int:
         return 0
     prev_date = datetime.date.fromisoformat(prev_file.stem)
     prev_data = load_data(prev_file)
-    leftover = max(0, remaining_seconds(prev_data, settings))
+    leftover = max(0, remaining_seconds(prev_data, settings, prev_date))
     missing_days = (today - prev_date).days - 1  # fully skipped days, no file
-    carryover = leftover + missing_days * settings["DAILY_LIMIT_SECONDS"]
+    carryover = leftover + sum(
+        daily_limit_seconds(prev_date + datetime.timedelta(days=offset), settings)
+        for offset in range(1, missing_days + 1)
+    )
     cap = settings["MAX_CARRYOVER_SECONDS"]
     return carryover if cap is None else min(carryover, cap)
 
@@ -130,9 +133,16 @@ def save_used_codes(used_codes):
     os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
 
 
-def remaining_seconds(data, settings):
+def daily_limit_seconds(date: datetime.date, settings) -> int:
+    """The day's own limit when its weekday has one, else the general one."""
+    weekday = config.WEEKDAY_NAMES[date.weekday()]
+    return settings["DAILY_LIMIT_OVERRIDES"].get(weekday, settings["DAILY_LIMIT_SECONDS"])
+
+
+def remaining_seconds(data, settings, date: datetime.date):
+    """`date` is the day `data` belongs to; the limit may differ per weekday."""
     return (
-        settings["DAILY_LIMIT_SECONDS"]
+        daily_limit_seconds(date, settings)
         + data["carryover_sec"]
         + data["granted_sec"]
         - data["time_spent_sec"]
@@ -295,7 +305,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
         time_spent_sec=data["time_spent_sec"],
         carryover_sec=data["carryover_sec"],
         granted_sec=data["granted_sec"],
-        remaining_sec=remaining_seconds(data, settings),
+        remaining_sec=remaining_seconds(data, settings, now.date()),
         last_tick=data["last_tick"],
         settings=settings,
         settings_change_outcome=remote_sync.load_settings_change_outcome(),
@@ -370,7 +380,7 @@ def main():
         data = ensure_datafile(datafile, now, settings)
         if os_tooling.user_logged_in(TARGET_USER):
             settings = sync_with_server(data, datafile, now, settings)
-        write_remaining_time_file(remaining_seconds(data, settings))
+        write_remaining_time_file(remaining_seconds(data, settings, now.date()))
     except Exception:
         log_unexpected_error()
 
@@ -417,7 +427,7 @@ def main():
 
                 settings = sync_with_server(data, datafile, now, settings)
 
-                if remaining_seconds(data, settings) <= 0:
+                if remaining_seconds(data, settings, now.date()) <= 0:
                     write_remaining_time_file(0)
                     os_tooling.notify("time up", TARGET_USER)
                     data["event_log"].append(f"time up {now_str}")
@@ -435,11 +445,11 @@ def main():
                 data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
                 data["last_tick"] = now_str
                 save_data(data, datafile)
-                write_remaining_time_file(remaining_seconds(data, settings))
+                write_remaining_time_file(remaining_seconds(data, settings, now.date()))
             else:
                 # Nothing is being spent, but keep publishing: the widget treats
                 # a file that stops being refreshed as "the monitor is gone".
-                write_remaining_time_file(remaining_seconds(data, settings))
+                write_remaining_time_file(remaining_seconds(data, settings, now.date()))
         except Exception:
             log_unexpected_error()
         finally:

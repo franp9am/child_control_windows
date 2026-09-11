@@ -89,6 +89,7 @@ class SettingsView:
 class SettingsField:
     name: str  # the monitor's own name for the setting, raw
     value: str  # as JSON, so 3600 comes back an int and true a bool
+    wide: bool  # a dict or list needs a whole row, not a number-sized box
 
 
 @dataclass
@@ -213,18 +214,17 @@ def settings_in_words(settings: dict) -> str:
     # the last allowed hour is included in full, so the machine goes down when it ends
     until = settings["LATEST_HOUR_INCLUDED"] + 1
     # non-breaking space so a wrap never splits a value from the word it belongs to
+    limit = f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/d"
+    # .get: a monitor older than the setting does not report it. The days are
+    # not spelled out here: the settings page shows the dict as the child sent it.
+    if settings.get("DAILY_LIMIT_OVERRIDES"):
+        limit = f"{limit}\u00a0+overrides"
+    parts = [limit, f"{settings['EARLIEST_HOUR_INCLUDED']}-{until}"]
+    # only what is in effect is named, so carryover that is off says nothing
     cap = settings["MAX_CARRYOVER_SECONDS"]
-    if not settings["CARRYOVER"]:
-        carryover = "no\u00a0carryover"
-    elif cap is None:
-        carryover = "carryover"
-    else:
-        carryover = f"carryover\u00a0≤{compact_duration(cap)}"
-    return (
-        f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/d,"
-        f" {settings['EARLIEST_HOUR_INCLUDED']}-{until},"
-        f" {carryover}"
-    )
+    if settings["CARRYOVER"]:
+        parts.append("carryover" if cap is None else f"carryover\u00a0≤{compact_duration(cap)}")
+    return ", ".join(parts)
 
 
 def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView | None:
@@ -290,10 +290,15 @@ def settings_fields(connection: sqlite3.Connection, child_id: int) -> list[Setti
     wanted = wanted_settings(connection, child_id)
     if wanted is not None and wanted["outcome"] is None:
         prefill = json.loads(wanted["settings"])  # an ask still in transit wins
-    return [
-        SettingsField(name=name, value=json.dumps(prefill.get(name, value)))
-        for name, value in reported.items()
-    ]
+    fields = []
+    for name, value in reported.items():
+        shown = prefill.get(name, value)
+        fields.append(
+            SettingsField(
+                name=name, value=json.dumps(shown), wide=isinstance(shown, (dict, list))
+            )
+        )
+    return fields
 
 
 def csv_download(filename: str, header: list[str], rows: list[list]) -> Response:

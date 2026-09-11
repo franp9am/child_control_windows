@@ -15,15 +15,6 @@ Ordered by importance within each section.
   sync, so debugging works from the server page without machine access.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into
   a new date and a fresh daily limit.
-* Per-weekday daily limit: one extra setting holding a dict, e.g.
-  `DAILY_LIMIT_OVERRIDES: {"mon": 1800}`. The server is nearly free: the form is
-  JSON text already and the type check compares dict with dict. Client
-  decisions: the `allowed` spec in `SETTINGS` cannot express a dict, so each
-  setting needs a validator function; `compute_carryover_sec` credits each
-  skipped day its own limit; `remaining_seconds` must use the limit in force on
-  the file's date, not today's (harmless now, wrong once Sunday's leftover is
-  computed with Monday's limit); key format, day names or ISO numbers. Limit
-  only, the hours window stays global.
 * The same atomic write (temp file + `os.replace`) is copied all over; it wants
   one shared home.
 * Support more accounts / children on one machine.

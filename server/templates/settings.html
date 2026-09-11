@@ -20,6 +20,9 @@
     font-size: 1rem; font-family: inherit;
   }
   .settings-form input:focus { outline: none; border-color: #888; }
+  /* a JSON object gets a row of its own, under its label */
+  .settings-form label.wide, .settings-form input.wide { grid-column: 1 / -1; }
+  .settings-form input.wide { width: 100%; box-sizing: border-box; text-align: left; }
   .settings-form button {
     grid-column: 2; justify-self: end; margin-top: .4rem;
     padding: .55rem 1.4rem; border-radius: 6px;
@@ -54,8 +57,9 @@
         <form class="settings-form" method="post" action="{{ url_for('change_settings') }}">
           <input type="hidden" name="child_id" value="{{ child.id }}">
           {% for field in fields %}
-          <label for="{{ field.name }}">{{ field.name }}</label>
-          <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" required>
+          <label for="{{ field.name }}" {% if field.wide %}class="wide"{% endif %}>{{ field.name }}</label>
+          <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" required
+                 {% if field.wide %}class="wide"{% endif %}>
           {% endfor %}
           <button type="submit">Save</button>
         </form>
