@@ -21,7 +21,6 @@ from config import (
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
     SECRET_FILE,
-    SERVER_URL,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
@@ -286,10 +285,9 @@ def sync_with_server(data, datafile, now, settings) -> dict:
 
     Returns the settings to carry on with, which are the ones passed in unless
     the server changed them."""
-    if not SERVER_URL:
-        return settings
+    server_url = remote_sync.load_server_url()
     token = remote_sync.load_child_token()
-    if not token:
+    if not server_url or not token:
         return settings
 
     now_str = now.strftime(TIMESTAMP_FORMAT)
@@ -305,7 +303,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
     )
     applied_grant_ids = remote_sync.load_applied_grant_ids()
     try:
-        answer = remote_sync.send_status(status, applied_grant_ids, token)
+        answer = remote_sync.send_status(status, applied_grant_ids, server_url, token)
     except Exception:
         return settings  # offline is the normal case, not a crash
 

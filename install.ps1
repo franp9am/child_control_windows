@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 $MonitorDir = "C:\ProgramData\ScreenTime"   # monitor + data; hidden from the child
 $PythonDir  = "C:\ProgramData\ScreenTimePython"   # its own interpreter; readable by the child
+$DefaultServerUrl = "https://marwin.pfranek.cz"   # the author's server; a child token from it is what turns syncing on
 
 # Re-launch as administrator if we aren't already.
 $admin = [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -73,17 +74,13 @@ if (Test-Path $tokenFile) {
 }
 $childToken = (Read-Host $tokenPrompt).Trim()
 
-# SERVER_URL is a plain variable in config.py, so it's patched into the copy
-# installed below -- never into $src\config.py, which git tracks.
-$existingServerUrl = ""
-if (Test-Path "$MonitorDir\config.py") {
-    $existingServerUrl = [regex]::Match([IO.File]::ReadAllText("$MonitorDir\config.py"), 'SERVER_URL\s*=\s*"([^"]*)"').Groups[1].Value
-}
-$serverUrlPrompt = "Parent's server URL, e.g. https://screentime.example.com"
-if ($existingServerUrl) { $serverUrlPrompt += " (Enter keeps $existingServerUrl)" }
-else                    { $serverUrlPrompt += " (Enter to run without server syncing)" }
-$serverUrl = (Read-Host $serverUrlPrompt).Trim()
-if (-not $serverUrl) { $serverUrl = $existingServerUrl }
+# Enter keeps the URL of an earlier install, or takes the default on a fresh one. Without
+# a token the monitor never contacts the server, so the default is harmless offline.
+$serverUrlFile = "$MonitorDir\data\server_url.txt"
+$serverUrlDefault = $DefaultServerUrl
+if (Test-Path $serverUrlFile) { $serverUrlDefault = [IO.File]::ReadAllText($serverUrlFile).Trim() }
+$serverUrl = (Read-Host "Parent's server URL (Enter for $serverUrlDefault)").Trim()
+if (-not $serverUrl) { $serverUrl = $serverUrlDefault }
 
 # Where the "Extra time" shortcut goes. The shared desktop is one file every
 # account sees, the parent's included; the child's own Desktop keeps it off yours.
@@ -158,8 +155,6 @@ $pythonw = Join-Path $PythonDir pythonw.exe   # windowless twin, for the widget
 # That lock is what stops the child reading data\secret.txt and forging codes.
 New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
 Copy-Item "$src\monitor.py", "$src\os_tooling.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
-$copiedConfigPath = "$MonitorDir\config.py"
-[IO.File]::WriteAllText($copiedConfigPath, [IO.File]::ReadAllText($copiedConfigPath).Replace('SERVER_URL = ""', "SERVER_URL = `"$serverUrl`""))
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
 # icacls signals failure only through its exit code, which $ErrorActionPreference
 # does not catch -- unchecked, the secret below lands in a folder the child can read.
@@ -170,6 +165,7 @@ if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding 
 if ($childToken) { Set-Content -Path $tokenFile  -Value $childToken -Encoding ascii -NoNewline }
 # UTF-8 without a BOM, unlike the two above: an account name is not always ascii.
 [IO.File]::WriteAllText($userFile, $childUser)
+[IO.File]::WriteAllText($serverUrlFile, $serverUrl)
 
 # Shared folder: every local account may write here. It holds only the overlay
 # script, the number it shows and the redeem file -- nothing that has to be

@@ -20,8 +20,9 @@ CRASH_LOG_FILE = DATA_DIR / "crash.log"
 # Hex, 8 bytes or more, written by the installer; the parent's machine needs the same one.
 SECRET_FILE = DATA_DIR / "secret.txt"
 
-# The parent's server, e.g. "https://screentime.example.com"; empty disables all syncing.
-SERVER_URL = ""
+# The parent's server, e.g. "https://screentime.example.com", written by install.ps1;
+# missing or empty disables all syncing.
+SERVER_URL_FILE = DATA_DIR / "server_url.txt"
 CHILD_TOKEN_FILE = DATA_DIR / "child_token.txt"  # from add_child.py on the server
 APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
 SETTINGS_CHANGE_OUTCOME_FILE = DATA_DIR / "settings_change_outcome.json"  # of the last change delivered

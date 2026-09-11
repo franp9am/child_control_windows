@@ -15,7 +15,7 @@ from config import (
     APPLIED_GRANTS_FILE,
     CHILD_TOKEN_FILE,
     MONITOR_VERSION,
-    SERVER_URL,
+    SERVER_URL_FILE,
     SETTINGS_CHANGE_OUTCOME_FILE,
     SYNC_TIMEOUT_SECONDS,
 )
@@ -52,6 +52,15 @@ class SettingsChange:
 class SyncAnswer:
     pending_grants: List[Grant]
     settings_change: Optional[SettingsChange]
+
+
+def load_server_url() -> str:
+    """The parent's server; empty means run offline."""
+    try:
+        with open(SERVER_URL_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip().rstrip("/")
+    except Exception:
+        return ""
 
 
 def load_child_token() -> str:
@@ -101,7 +110,7 @@ def save_settings_change_outcome(change_id: int, taken: bool) -> None:
 
 
 def send_status(
-    status: DailyStatus, applied_grant_ids: List[int], token: str
+    status: DailyStatus, applied_grant_ids: List[int], server_url: str, token: str
 ) -> SyncAnswer:
     """Send today's totals plus the grant ids already applied (which acknowledges
     them), and return what the server answers.
@@ -112,7 +121,7 @@ def send_status(
     payload["applied_grant_ids"] = applied_grant_ids
     payload["monitor_version"] = MONITOR_VERSION
     request = urllib.request.Request(
-        SERVER_URL.rstrip("/") + "/api/sync",
+        server_url + "/api/sync",
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
