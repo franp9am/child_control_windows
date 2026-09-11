@@ -251,17 +251,15 @@ def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView
     return SettingsView(
         in_force=settings_in_words(json.loads(row["reported_settings"])),
         waiting_since=formatted_local_time(wanted["created_at"]) if unanswered else None,
-        refused=refused_in_words(json.loads(wanted["settings"])) if refused else None,
+        refused=settings_as_sent(json.loads(wanted["settings"])) if refused else None,
     )
 
 
-def refused_in_words(settings: dict) -> str:
-    """A refused change is the parent's own JSON, which the type check lets
-    through wherever a null is involved, so it may not fit the wording."""
-    try:
-        return settings_in_words(settings)
-    except (TypeError, KeyError):
-        return json.dumps(settings)
+def settings_as_sent(settings: dict) -> str:
+    """A refused change, field by field as the parent typed it. It is whatever
+    JSON they sent, so the wording cannot be trusted with it; and a refusal is
+    the one time the field names help, since they say what was rejected."""
+    return ", ".join(f"{name}={json.dumps(value)}" for name, value in settings.items())
 
 
 def child_reported_settings(connection: sqlite3.Connection, child_id: int) -> dict | None:
@@ -599,18 +597,10 @@ async def change_settings(request: Request) -> RedirectResponse:
                 status_code=400,
                 detail="every setting needs a JSON value, like 3600 or true",
             )
-        # The report carries the types along with the names, so a new value must
-        # have the type of the value it replaces -- a setting the monitor grows
-        # tomorrow brings its own. Not a copy of the monitor's ranges, which
-        # stay its own. A null is the one value that carries no type, so it may
-        # replace anything and anything may replace it; the monitor decides.
-        if any(
-            type(value) is not type(reported[name]) and None not in (value, reported[name])
-            for name, value in new_settings.items()
-        ):
-            raise HTTPException(
-                status_code=400, detail="each setting keeps the type it already has"
-            )
+        # Any JSON value goes through: the monitor's ranges and types are its
+        # own, and the server talks to monitors of several versions at once, so
+        # it holds no opinion of its own. A value the monitor will not take
+        # comes back refused, and is shown as sent.
         with connection:
             connection.execute(
                 """INSERT INTO settings_changes (child_id, changed_by, settings, created_at)
