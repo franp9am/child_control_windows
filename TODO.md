@@ -24,12 +24,6 @@ Ordered by importance within each section.
   the file's date, not today's (harmless now, wrong once Sunday's leftover is
   computed with Monday's limit); key format, day names or ISO numbers. Limit
   only, the hours window stays global.
-* `MAX_CARRYOVER_SECONDS: null` means no cap. Nullability is a per-setting flag
-  in `SETTINGS` (only this one), the default stays a number so a fresh report
-  still types the field, the `min()` in `compute_carryover_sec` gets a branch,
-  `settings_in_words` gets a third case "carryover unlimited". Server type check
-  is exempt when either side is null. Keep the `CARRYOVER` bool: off, capped
-  and unlimited over two plain fields beats a sentinel.
 * The same atomic write (temp file + `os.replace`) is copied all over; it wants
   one shared home.
 * Support more accounts / children on one machine.

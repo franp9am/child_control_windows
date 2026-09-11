@@ -48,7 +48,8 @@ SETTINGS = {
     },
     "MAX_CARRYOVER_SECONDS": {
         "default": 5 * 60 * 60,
-        "allowed": range(sys.maxsize)   # any non-negative int; a day can use at most its limit anyway
+        "allowed": range(sys.maxsize),  # any non-negative int; a day can use at most its limit anyway
+        "nullable": True,  # null is no cap; the default stays a number so a report types the field
     },
     "EARLIEST_HOUR_INCLUDED": {
         "default": 6,
@@ -70,6 +71,8 @@ def default_settings() -> dict:
 
 
 def value_allowed(name: str, value) -> bool:
+    if value is None:
+        return SETTINGS[name].get("nullable", False)
     allowed = SETTINGS[name]["allowed"]
     if isinstance(allowed, range):
         # bool is an int subclass: without the exclusion, True would pass as 1

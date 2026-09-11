@@ -67,7 +67,7 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
 def compute_carryover_sec(today: datetime.date, settings) -> int:
     """Leftover time from the last day with data, plus a full daily limit for
     every calendar day in between that has no data file (machine was off),
-    capped at MAX_CARRYOVER_SECONDS."""
+    capped at MAX_CARRYOVER_SECONDS unless that is None."""
     prev_file = find_previous_datafile(today)
     if prev_file is None:
         return 0
@@ -75,10 +75,9 @@ def compute_carryover_sec(today: datetime.date, settings) -> int:
     prev_data = load_data(prev_file)
     leftover = max(0, remaining_seconds(prev_data, settings))
     missing_days = (today - prev_date).days - 1  # fully skipped days, no file
-    return min(
-        leftover + missing_days * settings["DAILY_LIMIT_SECONDS"],
-        settings["MAX_CARRYOVER_SECONDS"],
-    )
+    carryover = leftover + missing_days * settings["DAILY_LIMIT_SECONDS"]
+    cap = settings["MAX_CARRYOVER_SECONDS"]
+    return carryover if cap is None else min(carryover, cap)
 
 
 def is_night_time(now, settings):

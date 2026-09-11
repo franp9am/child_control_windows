@@ -213,11 +213,13 @@ def settings_in_words(settings: dict) -> str:
     # the last allowed hour is included in full, so the machine goes down when it ends
     until = settings["LATEST_HOUR_INCLUDED"] + 1
     # non-breaking space so a wrap never splits a value from the word it belongs to
-    carryover = (
-        f"carryover\u00a0≤{compact_duration(settings['MAX_CARRYOVER_SECONDS'])}"
-        if settings["CARRYOVER"]
-        else "no\u00a0carryover"
-    )
+    cap = settings["MAX_CARRYOVER_SECONDS"]
+    if not settings["CARRYOVER"]:
+        carryover = "no\u00a0carryover"
+    elif cap is None:
+        carryover = "carryover"
+    else:
+        carryover = f"carryover\u00a0≤{compact_duration(cap)}"
     return (
         f"{compact_duration(settings['DAILY_LIMIT_SECONDS'])}/d,"
         f" {settings['EARLIEST_HOUR_INCLUDED']}-{until},"
@@ -249,8 +251,17 @@ def settings_view(connection: sqlite3.Connection, child_id: int) -> SettingsView
     return SettingsView(
         in_force=settings_in_words(json.loads(row["reported_settings"])),
         waiting_since=formatted_local_time(wanted["created_at"]) if unanswered else None,
-        refused=settings_in_words(json.loads(wanted["settings"])) if refused else None,
+        refused=refused_in_words(json.loads(wanted["settings"])) if refused else None,
     )
+
+
+def refused_in_words(settings: dict) -> str:
+    """A refused change is the parent's own JSON, which the type check lets
+    through wherever a null is involved, so it may not fit the wording."""
+    try:
+        return settings_in_words(settings)
+    except (TypeError, KeyError):
+        return json.dumps(settings)
 
 
 def child_reported_settings(connection: sqlite3.Connection, child_id: int) -> dict | None:
@@ -591,9 +602,12 @@ async def change_settings(request: Request) -> RedirectResponse:
         # The report carries the types along with the names, so a new value must
         # have the type of the value it replaces -- a setting the monitor grows
         # tomorrow brings its own. Not a copy of the monitor's ranges, which
-        # stay its own; but a "7" for a 7 could not even be displayed if it
-        # came back refused.
-        if any(type(value) is not type(reported[name]) for name, value in new_settings.items()):
+        # stay its own. A null is the one value that carries no type, so it may
+        # replace anything and anything may replace it; the monitor decides.
+        if any(
+            type(value) is not type(reported[name]) and None not in (value, reported[name])
+            for name, value in new_settings.items()
+        ):
             raise HTTPException(
                 status_code=400, detail="each setting keeps the type it already has"
             )

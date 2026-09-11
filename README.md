@@ -87,7 +87,8 @@ over to the next day), `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and
 ```
 
 One hour a day, usable between 6:00 and 20:59 -- the night starts at 21:00 and ends at
-6:00 -- with unused time carried over, but never more than five hours of it.
+6:00 -- with unused time carried over, but never more than five hours of it. A
+`MAX_CARRYOVER_SECONDS` of `null` carries everything over, with no cap.
 
 Edit that file, or let the parent's server set them. Delete it and
 the monitor falls back to the defaults in `config.py`, writing the file again at its
