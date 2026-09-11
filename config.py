@@ -1,10 +1,11 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 # Bumped by hand, reported on every sync; the parent's page displays it and
 # nothing branches on it.
-MONITOR_VERSION = "0.2.0"
+MONITOR_VERSION = "0.2.1"
 
 # Every local account may read and write here, so nothing in it is trusted.
 SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
@@ -47,7 +48,7 @@ SETTINGS = {
     },
     "MAX_CARRYOVER_SECONDS": {
         "default": 5 * 60 * 60,
-        "allowed": range(7 * 24 * 60 * 60 + 1)
+        "allowed": range(sys.maxsize)   # any non-negative int; a day can use at most its limit anyway
     },
     "EARLIEST_HOUR_INCLUDED": {
         "default": 6,

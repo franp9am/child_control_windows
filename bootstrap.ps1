@@ -10,7 +10,7 @@
 & {
     $ErrorActionPreference = "Stop"
     $Repo = "franp9am/child_control_windows"
-    $Ref  = "v0.2.0"   # a tag, so every install gets the same files; bump it on release
+    $Ref  = "v0.2.1"   # a tag, so every install gets the same files; bump it on release
 
     $dir = Join-Path $env:TEMP "ScreenTimeInstall"
     if (Test-Path $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
