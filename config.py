@@ -45,11 +45,6 @@ SETTINGS = {
         "default": 1 * 60 * 60,
         "allowed": DAILY_LIMIT_RANGE
     },
-    "DAILY_LIMIT_OVERRIDES": {
-        # a weekday named here gets its own limit, e.g. {"mon": 1800}
-        "default": {},
-        "allowed": {"keys": WEEKDAY_NAMES, "values": DAILY_LIMIT_RANGE},
-    },
     "CARRYOVER": {
         "default": True,
         "allowed": (True, False)
@@ -66,6 +61,11 @@ SETTINGS = {
     "LATEST_HOUR_INCLUDED": {
         "default": 20,
         "allowed": range(24)
+    },
+    "DAILY_LIMIT_OVERRIDES": {
+        # a weekday named here gets its own limit, e.g. {"mon": 1800}
+        "default": {},
+        "allowed": {"keys": WEEKDAY_NAMES, "values": DAILY_LIMIT_RANGE},
     },
 }
 SETTINGS_FILE = DATA_DIR / "settings.json"  # every setting in force, written by the monitor

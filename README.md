@@ -79,11 +79,11 @@ different limit on some weekdays), `CARRYOVER` (unused time rolls over to the ne
 ```json
 {
   "DAILY_LIMIT_SECONDS": 3600,
-  "DAILY_LIMIT_OVERRIDES": {"mon": 1800, "sat": 7200},
   "CARRYOVER": true,
   "MAX_CARRYOVER_SECONDS": 18000,
   "EARLIEST_HOUR_INCLUDED": 6,
-  "LATEST_HOUR_INCLUDED": 20
+  "LATEST_HOUR_INCLUDED": 20,
+  "DAILY_LIMIT_OVERRIDES": {"mon": 1800, "sat": 7200}
 }
 ```
 
