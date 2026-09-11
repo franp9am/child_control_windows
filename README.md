@@ -27,10 +27,9 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
    ```
 
    This fetches the pinned release into a temp folder and starts the installer, which
-   re-launches itself as admin and asks which local account is the child's, for the
-   shared secret (Enter generates one), optionally for the child token and URL of the
-   parent's server, and where the "Extra time" shortcut goes, probably
-   `C:\Users\<child>\Desktop`.
+   re-launches itself as admin and asks which local account is the child's, optionally
+   for the child token and URL of the parent's server, and where the "Extra time"
+   shortcut goes, probably `C:\Users\<child>\Desktop`.
    Then it downloads its own Python from python.org into `C:\ProgramData\ScreenTimePython`
    (about 13 MB, checked against hashes pinned in the script), copies the monitor into
    `C:\ProgramData\ScreenTime` and locks
@@ -38,9 +37,11 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
    registers the two scheduled tasks.
 3. Reboot. The monitor runs from boot, the widget appears when the child logs in.
 
-If the installer generated the secret, it prints it at the end -- the parent's machine
-needs the same one, in `data/secret.txt` next to `grant_extra_time_offline.py` or in
-`CHILD_SECRET`.
+A fresh install generates the secret for signing extra-time codes and prints it at the
+end -- the parent's machine needs the same one, in `data/secret.txt` next to
+`grant_extra_time_offline.py` or in `CHILD_SECRET`. It stays in
+`C:\ProgramData\ScreenTime\data\secret.txt`, which an administrator can read or replace
+(reboot afterwards); a reinstall keeps it.
 
 To remove everything, open PowerShell **as administrator** (right-click it in the Start
 menu) and paste:

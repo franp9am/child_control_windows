@@ -50,20 +50,13 @@ $secretFile = "$MonitorDir\data\secret.txt"
 $tokenFile  = "$MonitorDir\data\child_token.txt"
 $userFile   = "$MonitorDir\data\target_user.txt"
 
-$secretPrompt = "Shared secret for signing extra-time codes, at least 16 hex characters"
-if (Test-Path $secretFile) { $secretPrompt += " (Enter keeps the current one)" }
-else                       { $secretPrompt += " (Enter to generate one)" }
-$secretHex = (Read-Host $secretPrompt).Trim()
-$generatedSecret = ""
-if ($secretHex) {
-    if ($secretHex -notmatch '^[0-9a-fA-F]{16,}$' -or $secretHex.Length % 2 -ne 0) {
-        throw "The secret must be an even number of hex characters, at least 16."
-    }
-} elseif (-not (Test-Path $secretFile)) {
+# A fresh install gets a random secret for signing extra-time codes; a reinstall
+# keeps the one it has. To change it later, edit data\secret.txt and reboot.
+$secretHex = ""
+if (-not (Test-Path $secretFile)) {
     $bytes = New-Object byte[] 16
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $secretHex = -join ($bytes | ForEach-Object { $_.ToString("x2") })
-    $generatedSecret = $secretHex   # printed at the end, for the parent's machine
+    $secretHex = -join ($bytes | ForEach-Object { $_.ToString("x2") })   # printed at the end
 }
 
 $tokenPrompt = "Child token from add_child.py on the parent's server"
@@ -196,10 +189,10 @@ $who = New-ScheduledTaskPrincipal -UserId $childUser -LogonType Interactive
 # default task settings would skip the start on battery power
 Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Settings $opts -Force | Out-Null
 
-if ($generatedSecret) {
+if ($secretHex) {
     Write-Host "`nShared secret, needed by grant_extra_time_offline.py on your own machine:" -ForegroundColor Yellow
-    Write-Host "  $generatedSecret"
-    Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET)"
+    Write-Host "  $secretHex"
+    Write-Host "  (write it to data\secret.txt there, or set CHILD_SECRET; it stays in $secretFile here)"
 }
 Write-Host "`nDone. Monitor starts after a reboot; the widget appears when $childUser logs in."
 Read-Host "`nPress Enter to close" | Out-Null
