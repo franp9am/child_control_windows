@@ -23,7 +23,7 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 2. Open PowerShell (type `powershell` in the Start menu; no admin needed) and paste:
 
    ```powershell
-   irm https://raw.githubusercontent.com/franp9am/child_control_windows/master/bootstrap.ps1 | iex
+   irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/bootstrap.ps1 | iex
    ```
 
    This fetches the pinned release into a temp folder and starts the installer, which
@@ -46,7 +46,7 @@ To remove everything, open PowerShell **as administrator** (right-click it in th
 menu) and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/franp9am/child_control_windows/master/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/uninstall.ps1 | iex
 ```
 
 Prefer to see the files first? Download the zip of a release, extract it, and double-click
@@ -59,7 +59,7 @@ Upgrading by copying the scripts over is not enough: the monitor refuses to star
 `data\target_user.txt`, which only the installer writes. Run the installer again.
 
 Releasing: tag the commit, push the tag, then set `$Ref` in `bootstrap.ps1` to it. The
-URLs above point at `master`, so they stay the same across releases.
+URLs above point at `main`, so they stay the same across releases.
 
 ### Safety
 

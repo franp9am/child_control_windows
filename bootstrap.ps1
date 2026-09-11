@@ -1,6 +1,6 @@
 # bootstrap.ps1 -- install straight from GitHub, no manual download. From any PowerShell:
 #
-#   irm https://raw.githubusercontent.com/franp9am/child_control_windows/master/bootstrap.ps1 | iex
+#   irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/bootstrap.ps1 | iex
 #
 # That URL never changes; the release it installs is pinned below. It fetches
 # that release into a temp folder and runs install.ps1 from there, which asks
