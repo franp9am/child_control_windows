@@ -26,18 +26,10 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
    irm https://raw.githubusercontent.com/franp9am/child_control_windows/master/bootstrap.ps1 | iex
    ```
 
-   Or, without PowerShell: download
-   [bootstrap.cmd](https://raw.githubusercontent.com/franp9am/child_control_windows/master/bootstrap.cmd)
-   and double-click it. Windows warns about a downloaded script; click **More info**,
-   then **Run anyway**.
-
-   Either fetches the pinned release into a temp folder and starts the installer. Prefer
-   to see the files first? Download the zip of a release, extract it, and double-click
-   `install.cmd` (or right-click `install.ps1` -> **Run with PowerShell**).
-
-   The installer re-launches itself as admin and asks which local account is the
-   child's, for the shared secret (Enter generates one), optionally for the child token
-   and URL of the parent's server, and where the "Extra time" shortcut goes, probably
+   This fetches the pinned release into a temp folder and starts the installer, which
+   re-launches itself as admin and asks which local account is the child's, for the
+   shared secret (Enter generates one), optionally for the child token and URL of the
+   parent's server, and where the "Extra time" shortcut goes, probably
    `C:\Users\<child>\Desktop`.
    Then it downloads its own Python from python.org into `C:\ProgramData\ScreenTimePython`
    (about 13 MB, checked against hashes pinned in the script), copies the monitor into
@@ -50,18 +42,24 @@ If the installer generated the secret, it prints it at the end -- the parent's m
 needs the same one, in `data/secret.txt` next to `grant_extra_time_offline.py` or in
 `CHILD_SECRET`.
 
-`uninstall.cmd` removes everything (pass `-KeepData` to keep the usage history).
+To remove everything, open PowerShell **as administrator** (right-click it in the Start
+menu) and paste:
 
-The two `.cmd` files only hand the matching `.ps1` to PowerShell with
-`-ExecutionPolicy Bypass`, which is what lets them run on a machine whose default
-policy refuses scripts. They change no setting; without them, running `.\install.ps1`
-from a prompt fails with "running scripts is disabled on this system".
+```powershell
+irm https://raw.githubusercontent.com/franp9am/child_control_windows/master/uninstall.ps1 | iex
+```
+
+Prefer to see the files first? Download the zip of a release, extract it, and double-click
+`install.cmd` or `uninstall.cmd` (the latter takes `-KeepData` to keep the usage history).
+The `.cmd` files only hand the matching `.ps1` to PowerShell with `-ExecutionPolicy Bypass`,
+which is what lets them run on a machine whose default policy refuses scripts; they change
+no setting. The pasted lines need no such help: the policy governs script files, not text.
 
 Upgrading by copying the scripts over is not enough: the monitor refuses to start without
 `data\target_user.txt`, which only the installer writes. Run the installer again.
 
 Releasing: tag the commit, push the tag, then set `$Ref` in `bootstrap.ps1` to it. The
-two `bootstrap` URLs above point at `master`, so they stay the same across releases.
+URLs above point at `master`, so they stay the same across releases.
 
 ### Safety
 

@@ -1,10 +1,11 @@
 <#
     uninstall.ps1 -- removes what install.ps1 set up.
 
-    Right-click -> "Run with PowerShell" (it self-elevates). It unregisters the
-    two scheduled tasks, deletes the install folders (the monitor's private
-    Python included) and removes the desktop shortcut. Pass -KeepData to leave
-    the data\ folder (used codes, per-day json) in place.
+    Right-click -> "Run with PowerShell" (it self-elevates), or paste the line
+    from the README into an administrator PowerShell. It unregisters the two
+    scheduled tasks, deletes the install folders (the monitor's private Python
+    included) and removes the desktop shortcut. Pass -KeepData to leave the
+    data\ folder (used codes, per-day json) in place.
 #>
 [CmdletBinding()]
 param(
@@ -22,6 +23,8 @@ $isAdmin = ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
+    # Piped into iex there is no file to re-launch, so say what to do instead.
+    if (-not $PSCommandPath) { throw "Not running as administrator. Right-click PowerShell in the Start menu, choose 'Run as administrator', and paste the line again." }
     Write-Host "Re-launching with administrator rights..." -ForegroundColor Yellow
     $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
     if ($KeepData) { $argList += "-KeepData" }
