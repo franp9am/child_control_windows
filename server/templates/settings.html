@@ -23,6 +23,8 @@
   /* a JSON object gets a row of its own, under its label */
   .settings-form label.wide, .settings-form input.wide { grid-column: 1 / -1; }
   .settings-form input.wide { width: 100%; box-sizing: border-box; text-align: left; }
+  /* a label in a row of its own lacks the half input height the others are centred in */
+  .settings-form label.wide { margin-top: .5rem; }
   .settings-form button {
     grid-column: 2; justify-self: end; margin-top: .4rem;
     padding: .55rem 1.4rem; border-radius: 6px;
