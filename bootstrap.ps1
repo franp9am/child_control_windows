@@ -10,7 +10,7 @@
 & {
     $ErrorActionPreference = "Stop"
     $Repo = "franp9am/child_control_windows"
-    $Ref  = "v0.2.1"   # a tag, so every install gets the same files; bump it on release
+    $Ref  = "v0.3.0"   # a tag, so every install gets the same files; bump it on release
     if ($env:SCREENTIME_REF) { $Ref = $env:SCREENTIME_REF }   # any branch or tag, for testing before a release
 
     $dir = Join-Path $env:TEMP "ScreenTimeInstall"
