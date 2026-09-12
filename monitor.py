@@ -117,20 +117,18 @@ def save_data(data, datafile):
     os.replace(tmp_file, datafile)  # atomic, prevents random breakage
 
 
-def load_used_codes(used_codes_file: Path):
-    """Codes are not tied to a date, so used ones are tracked across days."""
+def load_used_codes(used_codes_file: Path) -> set:
+    """Codes are not tied to a date, so used ones are tracked across days:
+    one code per line, and a line cut short by a crash matches no code."""
     try:
-        with open(used_codes_file, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    except Exception:
+        return set(used_codes_file.read_text(encoding="utf-8").split())
+    except OSError:
         return set()
 
 
-def save_used_codes(used_codes, used_codes_file: Path):
-    tmp_file = used_codes_file.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(sorted(used_codes), f, indent=2)
-    os.replace(tmp_file, used_codes_file)  # make the write atomic
+def record_used_code(code: str, used_codes_file: Path):
+    with open(used_codes_file, "a", encoding="utf-8") as f:
+        f.write(code + "\n")
 
 
 def redeem_unused_code(redeem_file: Path, secret: bytes, used_codes_file: Path) -> int:
@@ -140,11 +138,9 @@ def redeem_unused_code(redeem_file: Path, secret: bytes, used_codes_file: Path) 
     redeem = handle_redeem_file(redeem_file, secret)
     if redeem["status"] != "valid":
         return 0
-    used_codes = load_used_codes(used_codes_file)
-    if redeem["redeem_code"] in used_codes:
+    if redeem["redeem_code"] in load_used_codes(used_codes_file):
         return 0
-    used_codes.add(redeem["redeem_code"])
-    save_used_codes(used_codes, used_codes_file)
+    record_used_code(redeem["redeem_code"], used_codes_file)
     return redeem["extra_time_sec"]
 
 

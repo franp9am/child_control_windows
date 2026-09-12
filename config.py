@@ -14,7 +14,7 @@ REMAINING_TIME_FILE_PATH = SHARED_DIR / "remaining_time.txt"  # read by the widg
 
 # Not visible from the child's account.
 DATA_DIR = Path(__file__).parent / "data"
-USED_CODES_FILE = DATA_DIR / "used_redeem_codes.json"
+USED_CODES_FILE = DATA_DIR / "used_redeem_codes.txt"  # one code per line, appended
 TARGET_USER_FILE = DATA_DIR / "target_user.txt"  # the child's account, written by install.ps1
 CRASH_LOG_FILE = DATA_DIR / "crash.log"
 

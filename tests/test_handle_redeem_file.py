@@ -91,7 +91,7 @@ def test_variant_spellings_of_the_amount_normalize_to_one_code(redeem_file):
 
 @pytest.fixture
 def used_codes_file(tmp_path):
-    return tmp_path / "used_redeem_codes.json"
+    return tmp_path / "used_redeem_codes.txt"
 
 
 def redeem(redeem_file, used_codes_file, content):
@@ -101,7 +101,23 @@ def redeem(redeem_file, used_codes_file, content):
 
 def test_a_fresh_code_is_granted_and_entered_in_the_ledger(redeem_file, used_codes_file):
     assert redeem(redeem_file, used_codes_file, code(seconds=600)) == 600
-    assert monitor.load_used_codes(used_codes_file) == {code(seconds=600)}
+    assert used_codes_file.read_text(encoding="utf-8") == code(seconds=600) + "\n"
+
+
+def test_the_ledger_grows_by_one_line_per_code(redeem_file, used_codes_file):
+    redeem(redeem_file, used_codes_file, code(date="2026-09-14"))
+    redeem(redeem_file, used_codes_file, code(date="2026-09-15"))
+    assert used_codes_file.read_text(encoding="utf-8").splitlines() == [
+        code(date="2026-09-14"),
+        code(date="2026-09-15"),
+    ]
+    assert monitor.load_used_codes(used_codes_file) == {code(date="2026-09-14"), code(date="2026-09-15")}
+
+
+def test_a_half_written_last_line_does_not_hide_the_codes_before_it(redeem_file, used_codes_file):
+    used_codes_file.write_text(code(date="2026-09-14") + "\n2026-09-15:6", encoding="utf-8")
+    assert redeem(redeem_file, used_codes_file, code(date="2026-09-14")) == 0
+    assert redeem(redeem_file, used_codes_file, code(date="2026-09-15")) == 600
 
 
 def test_the_same_code_is_refused_the_second_time(redeem_file, used_codes_file):
