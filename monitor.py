@@ -49,10 +49,10 @@ def get_datafile(now):
     return DATA_DIR / (now.date().isoformat() + ".json")
 
 
-def find_previous_datafile(today: datetime.date) -> Optional[Path]:
+def find_previous_datafile(today: datetime.date, data_dir: Path) -> Optional[Path]:
     """Find the most recent data file for a date before today, if any."""
     prev_dates = []
-    for p in DATA_DIR.glob("*.json"):
+    for p in data_dir.glob("*.json"):
         try:
             d = datetime.date.fromisoformat(p.stem)
         except ValueError:
@@ -61,14 +61,14 @@ def find_previous_datafile(today: datetime.date) -> Optional[Path]:
             prev_dates.append(d)
     if not prev_dates:
         return None
-    return DATA_DIR / (max(prev_dates).isoformat() + ".json")
+    return data_dir / (max(prev_dates).isoformat() + ".json")
 
 
-def compute_carryover_sec(today: datetime.date, settings) -> int:
+def compute_carryover_sec(today: datetime.date, settings, data_dir: Path) -> int:
     """Leftover time from the last day with data, plus its own full limit for
     every calendar day in between that has no data file (machine was off),
     capped at MAX_CARRYOVER_SECONDS unless that is None."""
-    prev_file = find_previous_datafile(today)
+    prev_file = find_previous_datafile(today, data_dir)
     if prev_file is None:
         return 0
     prev_date = datetime.date.fromisoformat(prev_file.stem)
@@ -337,7 +337,7 @@ def ensure_datafile(datafile, now, settings):
         return load_data(datafile)
     data = load_data(datafile)  # defaults, since the file doesn't exist
     if settings["CARRYOVER"]:
-        carryover = compute_carryover_sec(now.date(), settings)
+        carryover = compute_carryover_sec(now.date(), settings, datafile.parent)
         if carryover > 0:
             data["carryover_sec"] = carryover
             now_str = now.strftime(TIMESTAMP_FORMAT)

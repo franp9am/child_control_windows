@@ -166,7 +166,7 @@ change `$PythonVersion` and the four SHA-256 hashes at the top of the Python blo
 The tests use pytest, which is not installed anywhere in the project; `uv` fetches it
 into its own cache for the run. From the repository root:
 
-    uv run --no-project --with pytest python -m pytest tests -q
+    uv run --with pytest python -m pytest tests -q
 
 `python -m pytest` rather than plain `pytest`, so the repository root is on the import
 path and the tests can `import monitor`.
