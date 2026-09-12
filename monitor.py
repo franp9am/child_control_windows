@@ -182,13 +182,6 @@ def load_target_user() -> str:
     return name
 
 
-try:
-    TARGET_USER = load_target_user()
-except Exception:
-    log_unexpected_error()  # a failure this early leaves no other trace
-    raise
-
-
 def verify(msg: bytes, sig_hex: str) -> bool:
     expected = hmac.new(SECRET, msg, hashlib.sha256).hexdigest()[:SIGNATURE_CHARS]
     return expected == sig_hex
@@ -287,7 +280,7 @@ def handle_redeem_file():
     }
 
 
-def sync_with_server(data, datafile, now, settings) -> dict:
+def sync_with_server(data, datafile, now, settings, target_user) -> dict:
     """Report today's totals to the parent's server, apply the grants it sends
     back and adopt any settings it sends with them. A server that is down, slow
     or unreachable simply leaves the local numbers and settings untouched.
@@ -321,7 +314,7 @@ def sync_with_server(data, datafile, now, settings) -> dict:
     for grant in answer.pending_grants:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
-        os_tooling.notify(f"extra time {grant.seconds}", TARGET_USER)
+        os_tooling.notify(f"extra time {grant.seconds}", target_user)
     change = answer.settings_change
     if change is not None:
         in_force = config.save_settings(change.settings)
@@ -370,6 +363,12 @@ def seconds_to_charge(data, now):
 
 
 def main():
+    try:
+        target_user = load_target_user()
+    except Exception:
+        log_unexpected_error()  # a failure this early leaves no other trace
+        raise
+
     time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
 
     try:
@@ -378,8 +377,8 @@ def main():
         datafile = get_datafile(now)
         settings = config.get_config()
         data = ensure_datafile(datafile, now, settings)
-        if os_tooling.user_logged_in(TARGET_USER):
-            settings = sync_with_server(data, datafile, now, settings)
+        if os_tooling.user_logged_in(target_user):
+            settings = sync_with_server(data, datafile, now, settings, target_user)
         write_remaining_time_file(remaining_seconds(data, settings, now.date()))
     except Exception:
         log_unexpected_error()
@@ -398,15 +397,15 @@ def main():
             settings = config.get_config()
             data = ensure_datafile(datafile, now, settings)
 
-            is_logged_in = os_tooling.user_logged_in(TARGET_USER)
+            is_logged_in = os_tooling.user_logged_in(target_user)
 
             if is_logged_in:
                 if is_night_time(now, settings):
                     write_remaining_time_file(0)
-                    os_tooling.notify("Night time", TARGET_USER)
+                    os_tooling.notify("Night time", target_user)
                     data["event_log"].append(f"Night time {now_str}")
                     save_data(data, datafile)
-                    sync_with_server(data, datafile, now, settings)
+                    sync_with_server(data, datafile, now, settings, target_user)
                     # last, because it blocks until the machine goes down; a
                     # failure above only costs this tick, the next one retries
                     os_tooling.shutdown(NIGHT_SHUTDOWN_DELAY_SECONDS)
@@ -422,20 +421,20 @@ def main():
                         extra_time = redeem["extra_time_sec"]
                         data["event_log"].append(f"redeem code {extra_time} {now_str}")
                         data["granted_sec"] += extra_time
-                        os_tooling.notify(f"extra time {extra_time}", TARGET_USER)
+                        os_tooling.notify(f"extra time {extra_time}", target_user)
                         save_data(data, datafile)
 
-                settings = sync_with_server(data, datafile, now, settings)
+                settings = sync_with_server(data, datafile, now, settings, target_user)
 
                 if remaining_seconds(data, settings, now.date()) <= 0:
                     write_remaining_time_file(0)
-                    os_tooling.notify("time up", TARGET_USER)
+                    os_tooling.notify("time up", target_user)
                     data["event_log"].append(f"time up {now_str}")
                     save_data(data, datafile)
                     # last word before the machine goes down: without it the page
                     # keeps yesterday's numbers and the grant that caused this
                     # shutdown stays pending until the next boot
-                    sync_with_server(data, datafile, now, settings)
+                    sync_with_server(data, datafile, now, settings, target_user)
                     # last, because it blocks until the machine goes down; a
                     # failure above only costs this tick, the next one retries
                     os_tooling.shutdown(SHUTDOWN_DELAY_SECONDS)
