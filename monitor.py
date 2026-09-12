@@ -117,20 +117,35 @@ def save_data(data, datafile):
     os.replace(tmp_file, datafile)  # atomic, prevents random breakage
 
 
-def load_used_codes():
+def load_used_codes(used_codes_file: Path):
     """Codes are not tied to a date, so used ones are tracked across days."""
     try:
-        with open(USED_CODES_FILE, "r", encoding="utf-8") as f:
+        with open(used_codes_file, "r", encoding="utf-8") as f:
             return set(json.load(f))
     except Exception:
         return set()
 
 
-def save_used_codes(used_codes):
-    tmp_file = USED_CODES_FILE.with_suffix(".tmp")
+def save_used_codes(used_codes, used_codes_file: Path):
+    tmp_file = used_codes_file.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(sorted(used_codes), f, indent=2)
-    os.replace(tmp_file, USED_CODES_FILE)  # make the write atomic
+    os.replace(tmp_file, used_codes_file)  # make the write atomic
+
+
+def redeem_unused_code(redeem_file: Path, secret: bytes, used_codes_file: Path) -> int:
+    """Seconds granted by the code in the redeem file: zero unless the code is
+    valid and has never been used, in which case it is entered in the ledger
+    before its seconds are handed out."""
+    redeem = handle_redeem_file(redeem_file, secret)
+    if redeem["status"] != "valid":
+        return 0
+    used_codes = load_used_codes(used_codes_file)
+    if redeem["redeem_code"] in used_codes:
+        return 0
+    used_codes.add(redeem["redeem_code"])
+    save_used_codes(used_codes, used_codes_file)
+    return redeem["extra_time_sec"]
 
 
 def daily_limit_seconds(date: datetime.date, settings) -> int:
@@ -182,24 +197,24 @@ def load_target_user() -> str:
     return name
 
 
-def verify(msg: bytes, sig_hex: str) -> bool:
-    expected = hmac.new(SECRET, msg, hashlib.sha256).hexdigest()[:SIGNATURE_CHARS]
+def verify(msg: bytes, sig_hex: str, secret: bytes) -> bool:
+    expected = hmac.new(secret, msg, hashlib.sha256).hexdigest()[:SIGNATURE_CHARS]
     return expected == sig_hex
 
 
-def handle_redeem_file():
+def handle_redeem_file(redeem_file: Path, secret: bytes):
     """Checks the redeem code from file and adds the time to the data file"""
-    if not len(SECRET):  # if secret is not loaded, program should not break
+    if not len(secret):  # if secret is not loaded, program should not break
         return {
             "status": "cannot load secret",
             "redeem_code": None,
             "extra_time_sec": 0,
         }
 
-    if not REDEEM_FILE_PATH.is_file():
+    if not redeem_file.is_file():
         try:
-            REDEEM_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            REDEEM_FILE_PATH.touch()
+            redeem_file.parent.mkdir(parents=True, exist_ok=True)
+            redeem_file.touch()
         except Exception:
             pass
         return {
@@ -208,14 +223,14 @@ def handle_redeem_file():
             "extra_time_sec": 0,
         }
     # prevent an attack with loading large files
-    if os.path.getsize(REDEEM_FILE_PATH) > MAX_REDEEM_FILE_BYTES:
+    if os.path.getsize(redeem_file) > MAX_REDEEM_FILE_BYTES:
         return {
             "status": "file too large",
             "redeem_code": None,
             "extra_time_sec": 0,
         }
     try:
-        with open(REDEEM_FILE_PATH) as f:
+        with open(redeem_file) as f:
             redeem_content = f.read().strip()
     except Exception:
         return {
@@ -262,7 +277,7 @@ def handle_redeem_file():
     # it is not checked against the calendar, so a code has no expiry date.
     extracted_payload = f"{req_date}:{req_extra_time}".encode()
 
-    if not verify(extracted_payload, req_sig):
+    if not verify(extracted_payload, req_sig, secret):
         return {
             "status": "invalid signature",
             "redeem_code": redeem_content,
@@ -411,18 +426,12 @@ def main():
                     os_tooling.shutdown(NIGHT_SHUTDOWN_DELAY_SECONDS)
                     continue
 
-                redeem = handle_redeem_file()
-                if redeem and redeem["status"] == "valid":
-                    used_codes = load_used_codes()
-                    if redeem["redeem_code"] not in used_codes:
-                        # redeem code is valid and not used yet
-                        used_codes.add(redeem["redeem_code"])
-                        save_used_codes(used_codes)
-                        extra_time = redeem["extra_time_sec"]
-                        data["event_log"].append(f"redeem code {extra_time} {now_str}")
-                        data["granted_sec"] += extra_time
-                        os_tooling.notify(f"extra time {extra_time}", target_user)
-                        save_data(data, datafile)
+                extra_time = redeem_unused_code(REDEEM_FILE_PATH, SECRET, USED_CODES_FILE)
+                if extra_time:
+                    data["event_log"].append(f"redeem code {extra_time} {now_str}")
+                    data["granted_sec"] += extra_time
+                    os_tooling.notify(f"extra time {extra_time}", target_user)
+                    save_data(data, datafile)
 
                 settings = sync_with_server(data, datafile, now, settings, target_user)
 

@@ -4,8 +4,7 @@ Ordered by importance within each section.
 
 ## Client / monitor (each change needs a visit to the child's machine)
 
-* Tests, before more client changes. Done for the pure logic except
-  `handle_redeem_file`.
+* Tests, before more client changes. Done for the pure logic.
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into
