@@ -21,6 +21,11 @@ STALE_AFTER_SECONDS = 300
 
 # Display settings -- used by nothing but this widget.
 POLL_INTERVAL_MS = 5000
+# "Topmost" is a band, not a guarantee: among topmost windows the one raised
+# last is on top, and a fullscreen game makes itself topmost when it starts.
+# So the widget puts itself back on top this often. It cannot help against a
+# game that takes the screen exclusively, where no other window is drawn at all.
+RERAISE_INTERVAL_MS = 1000
 SIDE_MARGIN_PX = 20
 # Below the caption buttons of a maximised window. Clicks fall through the box
 # anyway, but sitting on top of them hides which one is which.
@@ -60,6 +65,10 @@ _WS_EX_TRANSPARENT = 0x00000020
 _WS_EX_NOACTIVATE = 0x08000000
 _LWA_ALPHA = 0x00000002
 _GA_ROOT = 2  # winfo_id() names an inner window; this walks up to the real one
+_HWND_TOPMOST = -1
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_NOACTIVATE = 0x0010
 
 _user32 = ctypes.windll.user32
 # Spelled out because the defaults would truncate window handles to 32 bits on
@@ -74,6 +83,15 @@ _user32.SetLayeredWindowAttributes.argtypes = (
     wintypes.COLORREF,
     ctypes.c_ubyte,
     wintypes.DWORD,
+)
+_user32.SetWindowPos.argtypes = (
+    wintypes.HWND,
+    wintypes.HWND,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    wintypes.UINT,
 )
 _user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
 _user32.GetAsyncKeyState.restype = ctypes.c_short
@@ -135,10 +153,14 @@ class RemainingTimeWidget:
         self._apply_click_through()
 
         self.root.after(HOTKEY_POLL_MS, self.check_hotkey)
+        self.root.after(RERAISE_INTERVAL_MS, self.keep_on_top)
         self.update_label()
 
+    def _hwnd(self):
+        return _user32.GetAncestor(self.root.winfo_id(), _GA_ROOT)
+
     def _apply_click_through(self):
-        hwnd = _user32.GetAncestor(self.root.winfo_id(), _GA_ROOT)
+        hwnd = self._hwnd()
         style = _user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
         _user32.SetWindowLongW(
             hwnd, _GWL_EXSTYLE, style | _WS_EX_LAYERED | _WS_EX_TRANSPARENT | _WS_EX_NOACTIVATE
@@ -156,6 +178,15 @@ class RemainingTimeWidget:
         x = SIDE_MARGIN_PX if CORNER == "left" else screen_width - width - SIDE_MARGIN_PX
         y = TOP_MARGIN_PX
         self.root.geometry(f"+{x}+{y}")
+
+    def keep_on_top(self):
+        """Move the box back above any topmost window raised since, without
+        taking focus and without showing it while hidden."""
+        if not self.hidden:
+            _user32.SetWindowPos(
+                self._hwnd(), _HWND_TOPMOST, 0, 0, 0, 0, _SWP_NOSIZE | _SWP_NOMOVE | _SWP_NOACTIVATE
+            )
+        self.root.after(RERAISE_INTERVAL_MS, self.keep_on_top)
 
     def check_hotkey(self):
         """Toggle once per press, rather than on every poll while it is held."""
