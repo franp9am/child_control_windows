@@ -31,15 +31,14 @@ from config import (
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_secret() -> bytes:
-    """The key redeem codes are signed with; empty when missing or malformed."""
+def load_secret(secret_file: Path) -> bytes:
+    """The key redeem codes are signed with; empty when missing or malformed,
+    and with an empty key no code is accepted."""
     try:
-        return bytes.fromhex(SECRET_FILE.read_text(encoding="utf-8").strip())
-    except Exception:  # runs at import, where nothing would catch a raise
+        return bytes.fromhex(secret_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
         return b""
 
-
-SECRET = load_secret()  # empty without a secret file: codes stop being accepted
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"  # shared by every stamp written and read
 TICK_TIME_FORMAT = "%H:%M:%S"  # ticks live in a per-date file, so no date needed
@@ -182,14 +181,14 @@ def log_unexpected_error():
         pass
 
 
-def load_target_user() -> str:
+def load_target_user(target_user_file: Path) -> str:
     """The child's account, as install.ps1 wrote it; there is no default."""
     try:
-        name = TARGET_USER_FILE.read_text(encoding="utf-8-sig").strip()
+        name = target_user_file.read_text(encoding="utf-8-sig").strip()
     except OSError:
         name = ""
     if not name:
-        raise ValueError(f"No child account in {TARGET_USER_FILE}; run install.ps1 to set it")
+        raise ValueError(f"No child account in {target_user_file}; run install.ps1 to set it")
     return name
 
 
@@ -375,10 +374,11 @@ def seconds_to_charge(data, now):
 
 def main():
     try:
-        target_user = load_target_user()
+        target_user = load_target_user(TARGET_USER_FILE)
     except Exception:
         log_unexpected_error()  # a failure this early leaves no other trace
         raise
+    secret = load_secret(SECRET_FILE)
 
     time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
 
@@ -422,7 +422,7 @@ def main():
                     os_tooling.shutdown(NIGHT_SHUTDOWN_DELAY_SECONDS)
                     continue
 
-                extra_time = redeem_unused_code(REDEEM_FILE_PATH, SECRET, USED_CODES_FILE)
+                extra_time = redeem_unused_code(REDEEM_FILE_PATH, secret, USED_CODES_FILE)
                 if extra_time:
                     data["event_log"].append(f"redeem code {extra_time} {now_str}")
                     data["granted_sec"] += extra_time
