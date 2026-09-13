@@ -22,6 +22,8 @@ Ordered by importance within each section.
   every change to the files on disk ships with its migration in the monitor's
   start, deleted once the dashboard shows no machine before it; the updater
   only copies files.
+* Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
+  for the limit, e.g. later on Friday and Saturday.
 * Enablers for several children on one machine, the full thing later: paths,
   secret and token derived from the child name through one function, files
   under `data/<child>/` and per-child files in the shared dir, the redeem code
@@ -40,8 +42,6 @@ Ordered by importance within each section.
   say what it returns. The installer's file list in `install.ps1` must name the
   new module.
 * Several children on one machine, on the enablers above.
-* Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
-  for the limit, e.g. later on Friday and Saturday.
 
 ## Server-side, anytime later (no access to the child's machine needed)
 
@@ -70,6 +70,13 @@ Ordered by importance within each section.
   auto-update.
 * Simplify installation: family, parent and child creation in the DB and the
   corresponding logins, with less effort from the maintainer.
+
+## Product, once mature
+
+* A general description of what this is, in Czech and English, for the site
+  and the top of the README.
+* A parent's manual: creating an account, adding children, installing on the
+  child's machine. The README covers the install for now.
 
 ## Someday / maybe
 
