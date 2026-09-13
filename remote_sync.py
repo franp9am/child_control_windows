@@ -9,16 +9,10 @@ import json
 import os
 import urllib.request
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import List, Optional
 
-from config import (
-    APPLIED_GRANTS_FILE,
-    CHILD_TOKEN_FILE,
-    MONITOR_VERSION,
-    SERVER_URL_FILE,
-    SETTINGS_CHANGE_OUTCOME_FILE,
-    SYNC_TIMEOUT_SECONDS,
-)
+from config import MONITOR_VERSION, SYNC_TIMEOUT_SECONDS
 
 
 @dataclass
@@ -54,59 +48,54 @@ class SyncAnswer:
     settings_change: Optional[SettingsChange]
 
 
-def load_server_url() -> str:
+def load_server_url(server_url_file: Path) -> str:
     """The parent's server; empty means run offline."""
     try:
-        with open(SERVER_URL_FILE, "r", encoding="utf-8") as f:
+        with open(server_url_file, "r", encoding="utf-8") as f:
             return f.read().strip().rstrip("/")
     except Exception:
         return ""
 
 
-def load_child_token() -> str:
-    """Identifies which child this monitor reports for; empty means not set up.
-
-    Deliberately not the signing secret and not stored in config.py: the server
-    keeps a copy of this token, so it must be worthless to whoever holds it --
-    it grants no time, it only names the child.
-    """
+def load_child_token(child_token_file: Path) -> str:
+    """Identifies which child this monitor reports for; empty means not set up."""
     try:
-        with open(CHILD_TOKEN_FILE, "r", encoding="utf-8") as f:
+        with open(child_token_file, "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
 
 
-def load_applied_grant_ids() -> List[int]:
+def load_applied_grant_ids(applied_grants_file: Path) -> List[int]:
     """Grants already added to the data file but not yet confirmed by the server."""
     try:
-        with open(APPLIED_GRANTS_FILE, "r", encoding="utf-8") as f:
+        with open(applied_grants_file, "r", encoding="utf-8") as f:
             return [int(grant_id) for grant_id in json.load(f)]
     except Exception:
         return []
 
 
-def save_applied_grant_ids(grant_ids):
-    tmp_file = APPLIED_GRANTS_FILE.with_suffix(".tmp")
+def save_applied_grant_ids(grant_ids, applied_grants_file: Path) -> None:
+    tmp_file = applied_grants_file.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(sorted(grant_ids), f)
-    os.replace(tmp_file, APPLIED_GRANTS_FILE)  # make the write atomic
+    os.replace(tmp_file, applied_grants_file)  # make the write atomic
 
 
-def load_settings_change_outcome() -> Optional[dict]:
+def load_settings_change_outcome(outcome_file: Path) -> Optional[dict]:
     try:
-        with open(SETTINGS_CHANGE_OUTCOME_FILE, "r", encoding="utf-8") as f:
+        with open(outcome_file, "r", encoding="utf-8") as f:
             outcome = json.load(f)
         return outcome if isinstance(outcome, dict) else None
     except Exception:
         return None
 
 
-def save_settings_change_outcome(change_id: int, taken: bool) -> None:
-    tmp_file = SETTINGS_CHANGE_OUTCOME_FILE.with_suffix(".tmp")
+def save_settings_change_outcome(change_id: int, taken: bool, outcome_file: Path) -> None:
+    tmp_file = outcome_file.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump({"id": change_id, "taken": taken}, f)
-    os.replace(tmp_file, SETTINGS_CHANGE_OUTCOME_FILE)  # make the write atomic
+    os.replace(tmp_file, outcome_file)  # make the write atomic
 
 
 def send_status(

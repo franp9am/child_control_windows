@@ -12,7 +12,9 @@ import config
 import os_tooling
 import remote_sync
 from config import (
+    APPLIED_GRANTS_FILE,
     CHECK_INTERVAL_SECONDS,
+    CHILD_TOKEN_FILE,
     CRASH_LOG_FILE,
     DATA_DIR,
     MAX_REDEEM_FILE_BYTES,
@@ -21,6 +23,8 @@ from config import (
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
     SECRET_FILE,
+    SERVER_URL_FILE,
+    SETTINGS_CHANGE_OUTCOME_FILE,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
@@ -297,8 +301,8 @@ def sync_with_server(data, datafile, now, settings, target_user) -> dict:
 
     Returns the settings to carry on with, which are the ones passed in unless
     the server changed them."""
-    server_url = remote_sync.load_server_url()
-    token = remote_sync.load_child_token()
+    server_url = remote_sync.load_server_url(SERVER_URL_FILE)
+    token = remote_sync.load_child_token(CHILD_TOKEN_FILE)
     if not server_url or not token:
         return settings
 
@@ -311,9 +315,11 @@ def sync_with_server(data, datafile, now, settings, target_user) -> dict:
         remaining_sec=remaining_seconds(data, settings, now.date()),
         last_tick=data["last_tick"],
         settings=settings,
-        settings_change_outcome=remote_sync.load_settings_change_outcome(),
+        settings_change_outcome=remote_sync.load_settings_change_outcome(
+            SETTINGS_CHANGE_OUTCOME_FILE
+        ),
     )
-    applied_grant_ids = remote_sync.load_applied_grant_ids()
+    applied_grant_ids = remote_sync.load_applied_grant_ids(APPLIED_GRANTS_FILE)
     try:
         answer = remote_sync.send_status(status, applied_grant_ids, server_url, token)
     except Exception:
@@ -331,12 +337,14 @@ def sync_with_server(data, datafile, now, settings, target_user) -> dict:
         taken = all(in_force.get(name) == value for name, value in change.settings.items())
         verdict = "taken" if taken else "refused"
         data["event_log"].append(f"server settings {verdict} {change.settings} {now_str}")
-        remote_sync.save_settings_change_outcome(change.id, taken)
+        remote_sync.save_settings_change_outcome(change.id, taken, SETTINGS_CHANGE_OUTCOME_FILE)
         settings = in_force
     if answer.pending_grants or change is not None:
         save_data(data, datafile)
     if answer.pending_grants or applied_grant_ids:
-        remote_sync.save_applied_grant_ids([grant.id for grant in answer.pending_grants])
+        remote_sync.save_applied_grant_ids(
+            [grant.id for grant in answer.pending_grants], APPLIED_GRANTS_FILE
+        )
     return settings
 
 
