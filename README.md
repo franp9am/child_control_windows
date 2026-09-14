@@ -90,7 +90,8 @@ different limit on some weekdays), `CARRYOVER` (unused time rolls over to the ne
 One hour a day, but half an hour on Mondays and two on Saturdays, usable between 6:00
 and 20:59 -- the night starts at 21:00 and ends at 6:00 -- with unused time carried over,
 but never more than five hours of it. A `MAX_CARRYOVER_SECONDS` of `null` carries
-everything over, with no cap.
+everything over, with no cap. Five minutes before the night the child sees a message;
+for the time running out there is none, the widget turns red instead.
 
 `DAILY_LIMIT_OVERRIDES` takes the days `mon` to `sun`, each with its limit in seconds;
 `{}` means every day is the same. Only the limit changes, the hours are the same every
@@ -150,6 +151,11 @@ password and passes the verified login to the app in an `X-Remote-User` header, 
 decides whose children the page shows. So the app must never be reachable except through
 the proxy -- keep it on `127.0.0.1` -- and the proxy must blank that header on anything it
 does not authenticate, or a client could name any parent it likes.
+
+The server stays compatible with every monitor version still installed. A child's
+machine is only updated by a visit, and even once auto-update ships some machines will
+lag a rollout or stay on manual mode, so the window never closes. The server accepts an
+old report and sends back only what that version understands.
 
 ## Python dependencies
 

@@ -20,6 +20,7 @@ from config import (
     MAX_REDEEM_FILE_BYTES,
     NETWORK_WARMUP_SECONDS,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
+    NIGHT_WARNING_SECONDS,
     REDEEM_FILE_PATH,
     REMAINING_TIME_FILE_PATH,
     SECRET_FILE,
@@ -455,6 +456,12 @@ def tick(now, target_user, secret):
             target_user=target_user,
         )
         return
+
+    soon = now + datetime.timedelta(seconds=NIGHT_WARNING_SECONDS)
+    warning = f"{NIGHT_WARNING_SECONDS // 60} minutes to night"
+    if is_night_time(soon, settings) and not any(e.startswith(warning) for e in data["event_log"]):
+        os_tooling.notify(warning, target_user)
+        data["event_log"].append(f"{warning} {now_str}")  # once a day: the log remembers
 
     data["time_spent_sec"] += seconds_to_charge(data, now)
     data["ticks"].append(now.strftime(TICK_TIME_FORMAT))

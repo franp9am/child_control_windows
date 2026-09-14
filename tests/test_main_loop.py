@@ -174,6 +174,30 @@ def test_night_time_orders_the_shutdown(machine, files):
     assert today_data(files)["time_spent_sec"] == 600
 
 
+def test_the_child_is_warned_five_minutes_before_night_once(machine, files):
+    tick(at(20, 54))  # NIGHT_HOUR is 21
+    assert machine.notifications == []
+
+    tick(at(20, 55))
+    tick(at(20, 56))
+
+    assert machine.notifications == ["5 minutes to night"]
+    assert today_data(files)["event_log"] == ["5 minutes to night 2026-09-14 20:55:00"]
+    assert machine.shutdowns == []
+
+
+def test_no_warning_when_night_never_comes(machine, files):
+    config.write_settings_file({**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23})
+    tick(at(23, 55))
+    assert machine.notifications == []
+
+
+def test_the_warning_looks_across_midnight(machine, files):
+    config.write_settings_file({**SETTINGS, "LATEST_HOUR_INCLUDED": 23})
+    tick(at(23, 55))
+    assert machine.notifications == ["5 minutes to night"]
+
+
 def test_a_logged_out_child_is_charged_nothing(machine, files):
     machine.logged_in = False
     write_day(files, spent=600)
@@ -368,7 +392,7 @@ def test_an_earlier_night_from_the_server_lags_one_tick(machine, files, sync):
 
     tick(at(18, 31))
     assert machine.shutdowns == [NIGHT_SHUTDOWN_DELAY_SECONDS]
-    assert machine.notifications == ["Night time"]
+    assert machine.notifications == ["5 minutes to night", "Night time"]  # the warning uses the new hours
 
 
 def test_the_server_hears_of_a_shutdown_before_it_happens(machine, files, sync, monkeypatch):
