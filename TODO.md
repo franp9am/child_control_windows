@@ -2,12 +2,8 @@
 
 Ordered by importance within each section.
 
-## Client / monitor (each change needs a visit to the child's machine, until auto-update ships)
+## Client / monitor
 
-* Tests, before more client changes: done. The pure logic, the sync, the
-  settings file, the main loop as scenarios in `test_main_loop.py` and the
-  widget's pure helpers. Untested on purpose: `os_tooling` (needs real
-  sessions), `main()` and the widget's Tk part.
 * Auto-update. The task runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature
@@ -49,7 +45,7 @@ Ordered by importance within each section.
   new module.
 * Several children on one machine, on the enablers above.
 
-## Server-side, anytime later (no access to the child's machine needed)
+## Server-side
 
 * Stay compatible with every monitor version still installed. Until auto-update
   ships, a client is only updated by a visit; afterwards the window shrinks to

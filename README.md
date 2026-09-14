@@ -171,6 +171,10 @@ into its own cache for the run. From the repository root:
 `python -m pytest` rather than plain `pytest`, so the repository root is on the import
 path and the tests can `import monitor`.
 
+They cover the monitor's logic and, in `tests/test_main_loop.py`, whole scenarios on a
+fake machine. Untested on purpose: `os_tooling` (needs real Windows sessions), `main()`
+and the widget's Tk part.
+
 ## License
 
 Copyright (c) 2026 Peter Franek. MIT License -- see `LICENSE`.
