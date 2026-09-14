@@ -178,9 +178,8 @@ def test_once_the_server_has_heard_the_ids_they_are_dropped(files, sync):
 
 def test_a_grant_repeated_by_the_server_is_applied_again(files, sync):
     # The server keeps sending a grant until it hears the id back. If the
-    # previous sync applied it but the acknowledgement never arrived, the
+    # previous sync applied it but crashed before recording the id, the
     # monitor applies it once more rather than risk losing it.
-    remote_sync.save_applied_grant_ids([4], files["applied_grants"])
     sync.answer = SyncAnswer(pending_grants=[Grant(id=4, seconds=600)], settings_change=None)
     _, data = run(files, data=day_data(granted=600))
     assert data["granted_sec"] == 1200

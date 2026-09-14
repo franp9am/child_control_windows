@@ -4,11 +4,10 @@ Ordered by importance within each section.
 
 ## Client / monitor (each change needs a visit to the child's machine, until auto-update ships)
 
-* Tests, before more client changes. Done for the pure logic, the sync and the
-  settings file. Left: the main loop (extract `startup(now)` and `tick(now)`
-  from `main()`, fake `os_tooling`, then scenarios: time up, night, logged
-  out, redeem code, grant waiting at boot, grant unacknowledged over a reboot,
-  new day) and the widget's pure helpers.
+* Tests, before more client changes: done. The pure logic, the sync, the
+  settings file, the main loop as scenarios in `test_main_loop.py` and the
+  widget's pure helpers. Untested on purpose: `os_tooling` (needs real
+  sessions), `main()` and the widget's Tk part.
 * Auto-update. The task runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature

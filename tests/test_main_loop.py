@@ -19,7 +19,7 @@ from config import (
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
 )
-from remote_sync import Grant, SyncAnswer
+from remote_sync import Grant, SettingsChange, SyncAnswer
 
 HOUR = 60 * 60
 NIGHT_HOUR = 21  # the first hour outside the allowed window below
@@ -34,10 +34,11 @@ SETTINGS = {  # what the settings file holds in every scenario, whatever the def
 KID = "kid"
 SECRET = b"\x01\x02\x03\x04"
 TODAY = datetime.date(2026, 9, 14)  # Monday
+TOMORROW = TODAY + datetime.timedelta(days=1)
 
 
-def at(hour, minute=0):
-    return datetime.datetime(TODAY.year, TODAY.month, TODAY.day, hour, minute, 0)
+def at(hour, minute=0, date=TODAY):
+    return datetime.datetime(date.year, date.month, date.day, hour, minute, 0)
 
 
 class Machine:
@@ -103,8 +104,12 @@ def write_day(files, date=TODAY, spent=0, granted=0, last_tick=None):
     monitor.save_data(data, files["data_dir"] / f"{date.isoformat()}.json")
 
 
+def day_data(files, date) -> dict:
+    return monitor.load_data(files["data_dir"] / f"{date.isoformat()}.json")
+
+
 def today_data(files) -> dict:
-    return monitor.load_data(files["today"])
+    return day_data(files, TODAY)
 
 
 def remaining_shown(files) -> int:
@@ -251,6 +256,35 @@ def test_startup_publishes_a_number_even_when_the_child_is_not_there(machine, fi
     assert remaining_shown(files) == HOUR - 600
 
 
+def test_a_machine_left_on_overnight_opens_the_new_day_at_midnight(machine, files):
+    machine.logged_in = False
+    write_day(files, spent=HOUR // 2, last_tick="2026-09-14 20:59:00")
+
+    tick(at(0, date=TOMORROW))
+
+    tomorrow = day_data(files, TOMORROW)
+    assert tomorrow["carryover_sec"] == HOUR // 2
+    assert tomorrow["time_spent_sec"] == 0
+    assert tomorrow["last_tick"] is None  # yesterday's ticks do not spill over
+    assert remaining_shown(files) == HOUR + HOUR // 2
+    assert machine.shutdowns == []
+
+
+def test_a_logged_in_child_starts_the_new_day_at_midnight(machine, files):
+    config.write_settings_file({**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23})
+    write_day(files, spent=HOUR // 2, last_tick="2026-09-14 23:58:00")
+
+    tick(at(23, 59))
+    tick(at(0, date=TOMORROW))
+
+    assert machine.shutdowns == []
+    assert today_data(files)["time_spent_sec"] == HOUR // 2 + 60  # the 23:59 tick, charged to yesterday
+    tomorrow = day_data(files, TOMORROW)
+    assert tomorrow["carryover_sec"] == HOUR // 2 - 60
+    assert tomorrow["time_spent_sec"] == CHECK_INTERVAL_SECONDS  # the first tick of a day is flat
+    assert remaining_shown(files) == HOUR + tomorrow["carryover_sec"] - CHECK_INTERVAL_SECONDS
+
+
 # --- with the server -------------------------------------------------------
 
 
@@ -260,8 +294,7 @@ def test_startup_applies_a_grant_waiting_on_the_server(machine, files, sync):
     sync.answer = SyncAnswer(pending_grants=[Grant(id=4, seconds=600)], settings_change=None)
 
     monitor.startup(at(8, 0), KID)
-    sync.answer = SyncAnswer(pending_grants=[], settings_change=None)  # the server heard the id
-    tick(at(8, 1))
+    tick(at(8, 1))  # reports the id, so the server does not send the grant again
 
     assert machine.shutdowns == []
     assert machine.notifications == ["extra time 600"]
@@ -291,6 +324,51 @@ def test_a_grant_saves_a_machine_whose_time_is_up(machine, files, sync):
 
     assert machine.shutdowns == []
     assert today_data(files)["time_spent_sec"] == HOUR + CHECK_INTERVAL_SECONDS
+
+
+def test_a_negative_grant_from_the_server_orders_the_shutdown(machine, files, sync):
+    write_server_files(files)
+    write_day(files, spent=HOUR - 300)  # five minutes left
+    sync.answer = SyncAnswer(pending_grants=[Grant(id=4, seconds=-600)], settings_change=None)
+
+    tick(at(8, 0))
+
+    assert machine.shutdowns == [SHUTDOWN_DELAY_SECONDS]
+    assert machine.notifications == ["extra time -600", "time up"]
+    assert today_data(files)["granted_sec"] == -600
+    assert remaining_shown(files) == 0
+
+
+def test_a_lower_limit_from_the_server_orders_the_shutdown(machine, files, sync):
+    write_server_files(files)
+    write_day(files, spent=HOUR // 2)
+    sync.answer = SyncAnswer(
+        pending_grants=[],
+        settings_change=SettingsChange(id=7, settings={"DAILY_LIMIT_SECONDS": HOUR // 4}),
+    )
+
+    tick(at(8, 0))
+
+    assert machine.shutdowns == [SHUTDOWN_DELAY_SECONDS]
+    assert config.get_config()["DAILY_LIMIT_SECONDS"] == HOUR // 4
+    assert remaining_shown(files) == 0
+
+
+def test_an_earlier_night_from_the_server_lags_one_tick(machine, files, sync):
+    write_server_files(files)
+    write_day(files, spent=HOUR // 2)
+    sync.answer = SyncAnswer(
+        pending_grants=[],
+        settings_change=SettingsChange(id=8, settings={"LATEST_HOUR_INCLUDED": 17}),
+    )
+
+    tick(at(18, 30))  # night is checked before the sync, with the hours known so far
+    assert machine.shutdowns == []
+    assert config.get_config()["LATEST_HOUR_INCLUDED"] == 17
+
+    tick(at(18, 31))
+    assert machine.shutdowns == [NIGHT_SHUTDOWN_DELAY_SECONDS]
+    assert machine.notifications == ["Night time"]
 
 
 def test_the_server_hears_of_a_shutdown_before_it_happens(machine, files, sync, monkeypatch):
