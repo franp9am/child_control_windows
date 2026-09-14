@@ -22,6 +22,13 @@ Ordered by importance within each section.
   every change to the files on disk ships with its migration in the monitor's
   start, deleted once the dashboard shows no machine before it; the updater
   only copies files.
+* Warn five minutes before night: one `os_tooling.notify` from `tick` when
+  `is_night_time(now + timedelta(minutes=5), settings)`, with a flag in the
+  data file so it fires once a day. Reusing `is_night_time` keeps it right
+  when night never comes (`LATEST_HOUR_INCLUDED = 23`) and across midnight.
+  The time running out needs no warning, the widget turns red below five
+  minutes. Leave the widget's number alone: showing "seconds to night" there
+  would make two hours jump to five minutes.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
   for the limit, e.g. later on Friday and Saturday.
 * Enablers for several children on one machine, the full thing later: paths,

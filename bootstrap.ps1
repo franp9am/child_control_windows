@@ -1,6 +1,6 @@
 # bootstrap.ps1 -- install straight from GitHub, no manual download. From any PowerShell:
 #
-#   irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/bootstrap.ps1 | iex
+#   irm https://raw.githubusercontent.com/franp9am/enoughy/main/bootstrap.ps1 | iex
 #
 # That URL never changes; the release it installs is pinned below. It fetches
 # that release into a temp folder and runs install.ps1 from there, which asks
@@ -9,7 +9,7 @@
 # $PSScriptRoot. The braces keep its variables out of the caller's session.
 & {
     $ErrorActionPreference = "Stop"
-    $Repo = "franp9am/child_control_windows"
+    $Repo = "franp9am/enoughy"
     $Ref  = "v0.4.0"   # a tag, so every install gets the same files; bump it on release
     if ($env:SCREENTIME_REF) { $Ref = $env:SCREENTIME_REF }   # any branch or tag, for testing before a release
 

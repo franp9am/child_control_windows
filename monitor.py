@@ -380,6 +380,89 @@ def seconds_to_charge(data, now):
     return CHECK_INTERVAL_SECONDS
 
 
+def startup(now, target_user):
+    """Before the first tick: the settings file if the machine never had one,
+    today's data with any carryover, a first sync so that a grant made while
+    the machine was off counts from the first tick, and a first number for
+    the widget."""
+    config.ensure_settings_file()
+    datafile = get_datafile(now)
+    settings = config.get_config()
+    data = ensure_datafile(datafile, now, settings)
+    if os_tooling.user_logged_in(target_user):
+        settings = sync_with_server(data, datafile, now, settings, target_user)
+    write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+
+
+def shut_down(reason, delay_seconds, data, datafile, now, settings, target_user):
+    """Tell the child, record why, get the last word to the server, and only
+    then order the shutdown."""
+    write_remaining_time_file(0)
+    os_tooling.notify(reason, target_user)
+    data["event_log"].append(f"{reason} {now.strftime(TIMESTAMP_FORMAT)}")
+    save_data(data, datafile)
+    # without this the page keeps stale numbers, and a grant that caused this
+    # shutdown stays pending until the next boot
+    sync_with_server(data, datafile, now, settings, target_user)
+    # last, because it blocks until the machine goes down; a failure above
+    # only costs this tick, the next one retries
+    os_tooling.shutdown(delay_seconds)
+
+
+def tick(now, target_user, secret):
+    """One check: charge the time since the last one, or shut the machine
+    down when the time is up or the allowed hours are over."""
+    now_str = now.strftime(TIMESTAMP_FORMAT)
+    datafile = get_datafile(now)
+    settings = config.get_config()
+    data = ensure_datafile(datafile, now, settings)
+
+    if not os_tooling.user_logged_in(target_user):
+        # Nothing is being spent, but keep publishing: the widget treats a
+        # file that stops being refreshed as "the monitor is gone".
+        write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+        return
+
+    if is_night_time(now, settings):
+        shut_down(
+            reason="Night time",
+            delay_seconds=NIGHT_SHUTDOWN_DELAY_SECONDS,
+            data=data,
+            datafile=datafile,
+            now=now,
+            settings=settings,
+            target_user=target_user,
+        )
+        return
+
+    extra_time = redeem_unused_code(REDEEM_FILE_PATH, secret, USED_CODES_FILE)
+    if extra_time:
+        data["event_log"].append(f"redeem code {extra_time} {now_str}")
+        data["granted_sec"] += extra_time
+        os_tooling.notify(f"extra time {extra_time}", target_user)
+        save_data(data, datafile)
+
+    settings = sync_with_server(data, datafile, now, settings, target_user)
+
+    if remaining_seconds(data, settings, now.date()) <= 0:
+        shut_down(
+            reason="time up",
+            delay_seconds=SHUTDOWN_DELAY_SECONDS,
+            data=data,
+            datafile=datafile,
+            now=now,
+            settings=settings,
+            target_user=target_user,
+        )
+        return
+
+    data["time_spent_sec"] += seconds_to_charge(data, now)
+    data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
+    data["last_tick"] = now_str
+    save_data(data, datafile)
+    write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+
+
 def main():
     try:
         target_user = load_target_user(TARGET_USER_FILE)
@@ -389,19 +472,10 @@ def main():
     secret = load_secret(SECRET_FILE)
 
     time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
-
     try:
-        config.ensure_settings_file()
-        now = datetime.datetime.now()
-        datafile = get_datafile(now)
-        settings = config.get_config()
-        data = ensure_datafile(datafile, now, settings)
-        if os_tooling.user_logged_in(target_user):
-            settings = sync_with_server(data, datafile, now, settings, target_user)
-        write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+        startup(datetime.datetime.now(), target_user)
     except Exception:
         log_unexpected_error()
-
     # the rest of the delay, waiting for the redeem file to be created
     time.sleep(max(0, STARTUP_DELAY_SECONDS - NETWORK_WARMUP_SECONDS))
 
@@ -410,64 +484,10 @@ def main():
         # odd data on disk) must not kill the monitor: log it, skip this tick
         # and try again, instead of leaving the machine unrestricted.
         try:
-            now = datetime.datetime.now()
-            now_str = now.strftime(TIMESTAMP_FORMAT)
-            datafile = get_datafile(now)
-            settings = config.get_config()
-            data = ensure_datafile(datafile, now, settings)
-
-            is_logged_in = os_tooling.user_logged_in(target_user)
-
-            if is_logged_in:
-                if is_night_time(now, settings):
-                    write_remaining_time_file(0)
-                    os_tooling.notify("Night time", target_user)
-                    data["event_log"].append(f"Night time {now_str}")
-                    save_data(data, datafile)
-                    sync_with_server(data, datafile, now, settings, target_user)
-                    # last, because it blocks until the machine goes down; a
-                    # failure above only costs this tick, the next one retries
-                    os_tooling.shutdown(NIGHT_SHUTDOWN_DELAY_SECONDS)
-                    continue
-
-                extra_time = redeem_unused_code(REDEEM_FILE_PATH, secret, USED_CODES_FILE)
-                if extra_time:
-                    data["event_log"].append(f"redeem code {extra_time} {now_str}")
-                    data["granted_sec"] += extra_time
-                    os_tooling.notify(f"extra time {extra_time}", target_user)
-                    save_data(data, datafile)
-
-                settings = sync_with_server(data, datafile, now, settings, target_user)
-
-                if remaining_seconds(data, settings, now.date()) <= 0:
-                    write_remaining_time_file(0)
-                    os_tooling.notify("time up", target_user)
-                    data["event_log"].append(f"time up {now_str}")
-                    save_data(data, datafile)
-                    # last word before the machine goes down: without it the page
-                    # keeps yesterday's numbers and the grant that caused this
-                    # shutdown stays pending until the next boot
-                    sync_with_server(data, datafile, now, settings, target_user)
-                    # last, because it blocks until the machine goes down; a
-                    # failure above only costs this tick, the next one retries
-                    os_tooling.shutdown(SHUTDOWN_DELAY_SECONDS)
-                    continue
-
-                data["time_spent_sec"] += seconds_to_charge(data, now)
-                data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
-                data["last_tick"] = now_str
-                save_data(data, datafile)
-                write_remaining_time_file(remaining_seconds(data, settings, now.date()))
-            else:
-                # Nothing is being spent, but keep publishing: the widget treats
-                # a file that stops being refreshed as "the monitor is gone".
-                write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+            tick(datetime.datetime.now(), target_user, secret)
         except Exception:
             log_unexpected_error()
-        finally:
-            # in a finally so the branches above can `continue` without
-            # turning the loop into a busy one
-            time.sleep(CHECK_INTERVAL_SECONDS)
+        time.sleep(CHECK_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

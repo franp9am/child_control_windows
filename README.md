@@ -23,7 +23,7 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 2. Open PowerShell (type `powershell` in the Start menu; no admin needed) and paste:
 
    ```powershell
-   irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/bootstrap.ps1 | iex
+   irm https://raw.githubusercontent.com/franp9am/enoughy/main/bootstrap.ps1 | iex
    ```
 
    This fetches the pinned release into a temp folder and starts the installer, which
@@ -47,7 +47,7 @@ To remove everything, open PowerShell **as administrator** (right-click it in th
 menu) and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/franp9am/child_control_windows/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/franp9am/enoughy/main/uninstall.ps1 | iex
 ```
 
 Prefer to see the files first? Download the zip of a release, extract it, and double-click

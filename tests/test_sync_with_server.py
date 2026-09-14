@@ -1,6 +1,7 @@
 """What one sync does to the day's data, the settings in force and the files
 between syncs. The wire is covered in test_remote_sync; here send_status is
-replaced by a fake that hands back a ready SyncAnswer or raises."""
+replaced by the `sync` fake from conftest, which hands back a ready
+SyncAnswer or raises."""
 import datetime
 import json
 
@@ -15,30 +16,6 @@ from remote_sync import Grant, SettingsChange, SyncAnswer
 NOW = datetime.datetime(2026, 9, 14, 8, 0, 0)  # Monday morning
 HOUR = 60 * 60
 KID = "kid"
-
-
-class FakeSync:
-    """Stands in for remote_sync.send_status. A test sets `answer` or `error`
-    before syncing, and afterwards reads what the monitor sent."""
-
-    def __init__(self):
-        self.answer = SyncAnswer(pending_grants=[], settings_change=None)
-        self.error = None
-        self.calls = 0
-        self.status = None
-        self.applied_grant_ids = None
-        self.server_url = None
-        self.token = None
-
-    def send_status(self, status, applied_grant_ids, server_url, token):
-        self.calls += 1
-        self.status = status
-        self.applied_grant_ids = applied_grant_ids
-        self.server_url = server_url
-        self.token = token
-        if self.error is not None:
-            raise self.error
-        return self.answer
 
 
 @pytest.fixture
@@ -61,13 +38,6 @@ def files(tmp_path, monkeypatch):
     paths["server_url"].write_text("https://screentime.example.com\n", encoding="utf-8")
     paths["token"].write_text("child-token-123\n", encoding="utf-8")
     return paths
-
-
-@pytest.fixture
-def sync(monkeypatch):
-    fake = FakeSync()
-    monkeypatch.setattr(remote_sync, "send_status", fake.send_status)
-    return fake
 
 
 @pytest.fixture
