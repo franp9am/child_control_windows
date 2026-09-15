@@ -18,8 +18,6 @@ Ordered by importance within each section.
   first runs, so every change to the files on disk ships with its migration in
   the monitor's start, deleted once the dashboard shows no machine before it;
   the updater only copies files.
-* The parent's page warns when a machine has not reported for a day. A monitor
-  that never starts looks like a quiet day otherwise.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
   for the limit, e.g. later on Friday and Saturday.
 * Send recent `event_log` lines (or at least the last caught exception) with each
@@ -78,3 +76,4 @@ Ordered by importance within each section.
 
 * Full client rewrite in C# with a signed exe installer; the monitor becomes
   a Windows service then.
+* The parent's page warns when a machine has not reported for a day.
