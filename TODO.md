@@ -17,19 +17,9 @@ Ordered by importance within each section.
   every change to the files on disk ships with its migration in the monitor's
   start, deleted once the dashboard shows no machine before it; the updater
   only copies files.
-* Run the monitor as a Windows service instead of a scheduled task, still in
-  Python: a `service.py` of about 80 lines does the Service Control Manager
-  handshake through `ctypes` (dispatcher, control handler, RUNNING reported at
-  once, the loop in a thread waiting on a stop event); the monitor's code does
-  not change. The installer runs `sc create` on the private python.exe as
-  LocalSystem plus `sc failure` for automatic restart, and removes the old
-  task; the uninstaller stops and deletes the service. The widget stays a task,
-  it needs the child's session. Why: on 2026-09-15 the Scheduler launched no
-  SYSTEM or boot-triggered task for hours while the test VM sat at a critical
-  battery, so the monitor never started; a service does not depend on Task
-  Scheduler at all, SCM restarts it after a crash, and the child cannot end it
-  from Task Manager. Half a day of code, a day of testing on a real machine;
-  the SCM handshake has no unit test.
+* Run the monitor as a Windows service instead of a scheduled task (still
+  Python, the SCM handshake via `ctypes`): it no longer depends on Task
+  Scheduler, SCM restarts it after a crash, and the child cannot end it.
 * The parent's page warns when a machine has not reported for a day. A monitor
   that never starts looks like a quiet day otherwise.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
