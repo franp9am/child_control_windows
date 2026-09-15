@@ -4,6 +4,14 @@ Ordered by importance within each section.
 
 ## Client / monitor
 
+* Enablers for several children on one machine, the full thing later: paths,
+  secret and token derived from the child name through one function, files
+  under `data/<child>/` (every directory there is a child; server URL and
+  used-codes ledger included, nothing machine-wide), per-child files in the
+  shared dir, the redeem code as `<child>:<date>:<seconds>:<sign>` with the
+  child signed too, the loop written as "for each child" while there is one.
+  The installer moves the old files under the child, `target_user.txt` last.
+  Ships before auto-update.
 * Auto-update. The task runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature
@@ -19,12 +27,6 @@ Ordered by importance within each section.
   only copies files.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
   for the limit, e.g. later on Friday and Saturday.
-* Enablers for several children on one machine, the full thing later: paths,
-  secret and token derived from the child name through one function, files
-  under `data/<child>/` and per-child files in the shared dir, the redeem code
-  as `<child>:<date>:<seconds>:<sign>` with the child signed too, the loop
-  written as "for each child" while there is one. Nothing is machine-wide:
-  the monitor moves the whole old data folder under the child on start.
 * Send recent `event_log` lines (or at least the last caught exception) with each
   sync, so debugging works from the server page without machine access.
 * Time zone is changeable by a standard user, which rolls `datetime.now()` into
