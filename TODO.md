@@ -4,20 +4,14 @@ Ordered by importance within each section.
 
 ## Client / monitor
 
-* Auto-update. The startup task runs a launcher: check for updates, then start
-  the monitor. The launcher is what the task points at, so it is the frozen
-  part and stays thin. It fetches the manifest from `releases/latest/download/`
-  on GitHub; if newer than the installed version, it verifies the Ed25519
-  signature (public key baked in, private key off GitHub and CI, verify
-  vendored in pure Python), downloads the zip, checks every hash, only then
-  replaces the files, its own included, and writes the version marker last so a
-  half-applied update repeats. Any failure is logged and the monitor starts
-  anyway. Never downgrades; rollback is a new tag. The server plays no part.
-  `UPDATE_MODE` in a file next to the launcher; the installer sets `manual`
-  when the machine does not sync. From then on nobody is present when new code
-  first runs, so every change to the files on disk ships with its migration in
-  the monitor's start, deleted once the dashboard shows no machine before it;
-  the updater only copies files.
+* Auto-update. The startup task runs a thin launcher that never changes: it
+  fetches the manifest from `releases/latest/download/`, verifies its Ed25519
+  signature (key baked in, verify vendored), downloads the zip, checks every
+  hash, replaces the files and writes the version marker last. Any failure is
+  logged and the monitor starts anyway. Never downgrades; rollback is a new
+  tag. `UPDATE_MODE` file next to the launcher, `manual` where the machine
+  does not sync. Migrations live in the monitor's start; the updater only
+  copies files.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
   for the limit, e.g. later on Friday and Saturday.
 * Send recent `event_log` lines (or at least the last caught exception) with each
