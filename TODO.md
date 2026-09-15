@@ -4,25 +4,20 @@ Ordered by importance within each section.
 
 ## Client / monitor
 
-* Run the monitor as a Windows service instead of a scheduled task (still
-  Python, the SCM handshake via `ctypes`): it no longer depends on Task
-  Scheduler, SCM restarts it after a crash, and the child cannot end it.
-  Before auto-update: what Windows launches at boot is the one thing a file
-  copy cannot change, so the service file is the frozen part and stays thin,
-  the handshake and one call into the launcher.
-* Auto-update. The service runs a launcher: check for updates, then start the
-  monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
-  if newer than the installed version, it verifies the Ed25519 signature
-  (public key baked in, private key off GitHub and CI, verify vendored in pure
-  Python), downloads the zip, checks every hash, only then replaces the files,
-  its own included, and writes the version marker last so a half-applied
-  update repeats. Any failure is logged and the monitor starts anyway. Never
-  downgrades; rollback is a new tag. The server plays no part. `UPDATE_MODE`
-  in a file next to the launcher; the installer sets `manual` when the machine
-  does not sync. From then on nobody is present when new code first runs, so
-  every change to the files on disk ships with its migration in the monitor's
-  start, deleted once the dashboard shows no machine before it; the updater
-  only copies files.
+* Auto-update. The startup task runs a launcher: check for updates, then start
+  the monitor. The launcher is what the task points at, so it is the frozen
+  part and stays thin. It fetches the manifest from `releases/latest/download/`
+  on GitHub; if newer than the installed version, it verifies the Ed25519
+  signature (public key baked in, private key off GitHub and CI, verify
+  vendored in pure Python), downloads the zip, checks every hash, only then
+  replaces the files, its own included, and writes the version marker last so a
+  half-applied update repeats. Any failure is logged and the monitor starts
+  anyway. Never downgrades; rollback is a new tag. The server plays no part.
+  `UPDATE_MODE` in a file next to the launcher; the installer sets `manual`
+  when the machine does not sync. From then on nobody is present when new code
+  first runs, so every change to the files on disk ships with its migration in
+  the monitor's start, deleted once the dashboard shows no machine before it;
+  the updater only copies files.
 * The parent's page warns when a machine has not reported for a day. A monitor
   that never starts looks like a quiet day otherwise.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
@@ -81,4 +76,5 @@ Ordered by importance within each section.
 
 ## Someday / maybe
 
-* Full client rewrite in C# with an exe installer.
+* Full client rewrite in C# with a signed exe installer; the monitor becomes
+  a Windows service then.
