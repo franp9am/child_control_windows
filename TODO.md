@@ -25,14 +25,12 @@ Ordered by importance within each section.
   changes from the server: schema, validation, the file, `get_config` renamed to
   say what it returns. The installer's file list in `install.ps1` must name the
   new module.
-* Several children on one machine. The layout is ready since 0.5: a child is a
-  directory under `data/` and under the shared dir, and the monitor loops over
-  them. Left: the redeem code as `<child>:<date>:<seconds>:<sign>` with the
-  child signed too, so a code redeems for one child only; the installer adding
-  a child without disturbing the ones there (one widget task per child, the
-  monitor task kept); one more `icacls` locking each child's shared folder to
-  that account, so siblings cannot see or edit each other's files. The
-  installer's move of a pre-0.5 layout goes once no such machine remains.
+* Several children on one machine. The per-child layout is there since 0.5.
+  Left: the child's name inside the redeem code and its signature, so a code
+  redeems for one child only; the installer adding a child next to the ones
+  there (one widget task each, the monitor task kept); `icacls` locking each
+  child's shared folder to that account. The pre-0.5 layout move goes once no
+  such machine remains.
 
 ## Server-side
 
