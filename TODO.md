@@ -6,10 +6,10 @@ Ordered by importance within each section.
 
 * Run the monitor as a Windows service instead of a scheduled task (still
   Python, the SCM handshake via `ctypes`): it no longer depends on Task
-  Scheduler, SCM restarts it after a crash, and the child cannot end it. Before auto-update:
-  what Windows launches at boot is the one thing a file copy cannot change,
-  so the service file is the frozen part and stays thin, the handshake and
-  one call into the launcher.
+  Scheduler, SCM restarts it after a crash, and the child cannot end it.
+  Before auto-update: what Windows launches at boot is the one thing a file
+  copy cannot change, so the service file is the frozen part and stays thin,
+  the handshake and one call into the launcher.
 * Auto-update. The service runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature
