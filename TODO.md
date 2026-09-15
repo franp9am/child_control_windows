@@ -4,7 +4,13 @@ Ordered by importance within each section.
 
 ## Client / monitor
 
-* Auto-update. The task runs a launcher: check for updates, then start the
+* Run the monitor as a Windows service instead of a scheduled task (still
+  Python, the SCM handshake via `ctypes`): it no longer depends on Task
+  Scheduler, SCM restarts it after a crash, and the child cannot end it. Before auto-update:
+  what Windows launches at boot is the one thing a file copy cannot change,
+  so the service file is the frozen part and stays thin, the handshake and
+  one call into the launcher.
+* Auto-update. The service runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature
   (public key baked in, private key off GitHub and CI, verify vendored in pure
@@ -17,9 +23,6 @@ Ordered by importance within each section.
   every change to the files on disk ships with its migration in the monitor's
   start, deleted once the dashboard shows no machine before it; the updater
   only copies files.
-* Run the monitor as a Windows service instead of a scheduled task (still
-  Python, the SCM handshake via `ctypes`): it no longer depends on Task
-  Scheduler, SCM restarts it after a crash, and the child cannot end it.
 * The parent's page warns when a machine has not reported for a day. A monitor
   that never starts looks like a quiet day otherwise.
 * Per-weekday override for the allowed hours, like `DAILY_LIMIT_OVERRIDES` does
