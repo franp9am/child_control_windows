@@ -13,6 +13,10 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
   and a shutdown only happens, while the child is logged in with the screen unlocked;
   a locked machine is left alone until somebody unlocks it.
 * `config.py` -- every setting, next to the monitor in a folder the child cannot read.
+  A child is a Windows account, and what the monitor keeps for them is under
+  `data\<account>\` there, with what the child may touch under
+  `C:\ProgramData\ScreenTimeShared\<account>\`. One child per install for now; the
+  layout is ready for more.
 * `remaining_time_widget.py` -- a small always-on-top "time left" box in the child's
   session. Cosmetic; the child may hide it with Ctrl+Alt+H or kill it.
 * `server/` -- optional web page for the parent, to grant time remotely and see usage.
@@ -40,8 +44,8 @@ Simpler to set up than Microsoft Family Safety, simple rules -- no kid surveilla
 A fresh install generates the secret for signing extra-time codes and prints it at the
 end -- the parent's machine needs the same one, in `data/secret.txt` next to
 `grant_extra_time_offline.py` or in `CHILD_SECRET`. It stays in
-`C:\ProgramData\ScreenTime\data\secret.txt`, which an administrator can read or replace
-(reboot afterwards); a reinstall keeps it.
+`C:\ProgramData\ScreenTime\data\<child>\secret.txt`, which an administrator can read or
+replace (reboot afterwards); a reinstall keeps it.
 
 To remove everything, open PowerShell **as administrator** (right-click it in the Start
 menu) and paste:
@@ -57,7 +61,9 @@ which is what lets them run on a machine whose default policy refuses scripts; t
 no setting. The pasted lines need no such help: the policy governs script files, not text.
 
 Upgrading by copying the scripts over is not enough: the monitor refuses to start without
-`data\target_user.txt`, which only the installer writes. Run the installer again.
+a child folder under `data\`, which only the installer creates. Run the installer again;
+over an install older than 0.5 it moves the child's files from `data\` itself into that
+folder.
 
 Releasing: tag the commit, push the tag, then set `$Ref` in `bootstrap.ps1` to it. The
 URLs above point at `main`, so they stay the same across releases.
@@ -71,8 +77,8 @@ The installer does **not** do these, and without them the setup is bypassable:
 
 ## Settings
 
-The six settings the monitor obeys live in `data/settings.json`, next to the monitor
-where the child cannot read them: `DAILY_LIMIT_SECONDS`, `DAILY_LIMIT_OVERRIDES` (a
+The six settings the monitor obeys live in `data/<child>/settings.json`, next to the
+monitor where the child cannot read them: `DAILY_LIMIT_SECONDS`, `DAILY_LIMIT_OVERRIDES` (a
 different limit on some weekdays), `CARRYOVER` (unused time rolls over to the next day),
 `MAX_CARRYOVER_SECONDS`, `EARLIEST_HOUR_INCLUDED` and `LATEST_HOUR_INCLUDED`. Example:
 
@@ -124,8 +130,8 @@ carried into the next day, so -20 h and -6 h cost the same single day.
 **A signed code**, for when there is no server. The parent runs
 `grant_extra_time_offline.py` and gets `<date>:<seconds>:<signature>`, e.g.
 `2026-07-23:3600:a184` for an extra hour. The child pastes it into
-`C:\ProgramData\ScreenTimeShared\extra_time.txt` (the "Extra time" shortcut the install
-put on the desktop). The date is only a nonce, not an expiry -- a code stays valid
+`C:\ProgramData\ScreenTimeShared\<child>\extra_time.txt` (the "Extra time" shortcut the
+install put on the desktop). The date is only a nonce, not an expiry -- a code stays valid
 forever, but each one can be redeemed exactly once.
 
 `grant_extra_time_offline.py` imports nothing else from the project, so copying that

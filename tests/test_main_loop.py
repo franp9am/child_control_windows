@@ -64,10 +64,12 @@ def files(tmp_path, monkeypatch):
     """Every file the monitor touches, redirected into tmp_path, with SETTINGS
     in force. No server url is written, so the monitor is offline until a test
     calls write_server_files()."""
-    data_dir = tmp_path / "data"
-    shared = tmp_path / "shared"
-    data_dir.mkdir()
-    shared.mkdir()
+    monkeypatch.setattr(monitor, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(monitor, "SHARED_DIR", tmp_path / "shared")
+    data_dir = tmp_path / "data" / KID  # as the installer leaves them
+    shared = tmp_path / "shared" / KID
+    data_dir.mkdir(parents=True)
+    shared.mkdir(parents=True)
     paths = {
         "data_dir": data_dir,
         "today": data_dir / f"{TODAY.isoformat()}.json",
@@ -80,16 +82,7 @@ def files(tmp_path, monkeypatch):
         "applied_grants": data_dir / "applied_grants.json",
         "outcome": data_dir / "settings_change_outcome.json",
     }
-    monkeypatch.setattr(monitor, "DATA_DIR", data_dir)
-    monkeypatch.setattr(monitor, "REDEEM_FILE_PATH", paths["redeem"])
-    monkeypatch.setattr(monitor, "REMAINING_TIME_FILE_PATH", paths["remaining"])
-    monkeypatch.setattr(monitor, "USED_CODES_FILE", paths["used_codes"])
-    monkeypatch.setattr(monitor, "SERVER_URL_FILE", paths["server_url"])
-    monkeypatch.setattr(monitor, "CHILD_TOKEN_FILE", paths["token"])
-    monkeypatch.setattr(monitor, "APPLIED_GRANTS_FILE", paths["applied_grants"])
-    monkeypatch.setattr(monitor, "SETTINGS_CHANGE_OUTCOME_FILE", paths["outcome"])
-    monkeypatch.setattr(config, "SETTINGS_FILE", paths["settings"])
-    config.write_settings_file(SETTINGS)
+    config.write_settings_file(SETTINGS, paths["settings"])
     return paths
 
 
@@ -187,13 +180,15 @@ def test_the_child_is_warned_five_minutes_before_night_once(machine, files):
 
 
 def test_no_warning_when_night_never_comes(machine, files):
-    config.write_settings_file({**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23})
+    config.write_settings_file(
+        {**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23}, files["settings"]
+    )
     tick(at(23, 55))
     assert machine.notifications == []
 
 
 def test_the_warning_looks_across_midnight(machine, files):
-    config.write_settings_file({**SETTINGS, "LATEST_HOUR_INCLUDED": 23})
+    config.write_settings_file({**SETTINGS, "LATEST_HOUR_INCLUDED": 23}, files["settings"])
     tick(at(23, 55))
     assert machine.notifications == ["5 minutes to night"]
 
@@ -295,7 +290,9 @@ def test_a_machine_left_on_overnight_opens_the_new_day_at_midnight(machine, file
 
 
 def test_a_logged_in_child_starts_the_new_day_at_midnight(machine, files):
-    config.write_settings_file({**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23})
+    config.write_settings_file(
+        {**SETTINGS, "EARLIEST_HOUR_INCLUDED": 0, "LATEST_HOUR_INCLUDED": 23}, files["settings"]
+    )
     write_day(files, spent=HOUR // 2, last_tick="2026-09-14 23:58:00")
 
     tick(at(23, 59))
@@ -374,7 +371,7 @@ def test_a_lower_limit_from_the_server_orders_the_shutdown(machine, files, sync)
     tick(at(8, 0))
 
     assert machine.shutdowns == [SHUTDOWN_DELAY_SECONDS]
-    assert config.get_config()["DAILY_LIMIT_SECONDS"] == HOUR // 4
+    assert config.get_config(files["settings"])["DAILY_LIMIT_SECONDS"] == HOUR // 4
     assert remaining_shown(files) == 0
 
 
@@ -388,7 +385,7 @@ def test_an_earlier_night_from_the_server_lags_one_tick(machine, files, sync):
 
     tick(at(18, 30))  # night is checked before the sync, with the hours known so far
     assert machine.shutdowns == []
-    assert config.get_config()["LATEST_HOUR_INCLUDED"] == 17
+    assert config.get_config(files["settings"])["LATEST_HOUR_INCLUDED"] == 17
 
     tick(at(18, 31))
     assert machine.shutdowns == [NIGHT_SHUTDOWN_DELAY_SECONDS]

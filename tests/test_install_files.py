@@ -1,4 +1,5 @@
-"""The two files install.ps1 writes that the monitor cannot run without."""
+"""What install.ps1 leaves that the monitor cannot run without: a directory
+per child, and the secret in it."""
 import pytest
 
 import monitor
@@ -21,16 +22,18 @@ def test_a_missing_or_unusable_secret_is_empty_so_no_code_is_accepted(tmp_path):
     assert monitor.load_secret(f) == b""
 
 
-def test_the_target_user_is_read_as_written_by_powershell(tmp_path):
-    f = tmp_path / "target_user.txt"
-    f.write_bytes(b"\xef\xbb\xbfkid\r\n")  # utf-8 BOM and CRLF, as Out-File leaves it
-    assert monitor.load_target_user(f) == "kid"
+def test_every_directory_under_data_is_a_child_and_files_are_not(tmp_path):
+    (tmp_path / "kid").mkdir()
+    (tmp_path / "Anna").mkdir()
+    (tmp_path / "crash.log").write_text("", encoding="utf-8")
+    assert monitor.load_children(tmp_path) == ["Anna", "kid"]
 
 
-def test_a_missing_or_empty_target_user_is_an_error_not_a_default(tmp_path):
-    f = tmp_path / "target_user.txt"
+def test_no_child_directory_is_an_error_not_a_default(tmp_path):
     with pytest.raises(ValueError):
-        monitor.load_target_user(f)
-    f.write_text(" \n", encoding="utf-8")
+        monitor.load_children(tmp_path / "never-made")
     with pytest.raises(ValueError):
-        monitor.load_target_user(f)
+        monitor.load_children(tmp_path)  # exists, empty
+    (tmp_path / "crash.log").write_text("", encoding="utf-8")
+    with pytest.raises(ValueError):
+        monitor.load_children(tmp_path)

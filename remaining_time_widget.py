@@ -11,7 +11,8 @@ import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
 
-# The installer puts this script in the same folder as the file it displays.
+# The installer passes the child's file, <shared>/<child>/remaining_time.txt;
+# started by hand without one, the widget looks next to itself.
 DEFAULT_REMAINING_TIME_FILE = Path(__file__).parent / "remaining_time.txt"
 REMAINING_TIME_FILE_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_REMAINING_TIME_FILE
 

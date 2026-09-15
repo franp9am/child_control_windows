@@ -5,28 +5,17 @@ from pathlib import Path
 
 # Bumped by hand, reported on every sync; the parent's page displays it and
 # nothing branches on it.
-MONITOR_VERSION = "0.4.0"
+MONITOR_VERSION = "0.5.0"
 
-# Every local account may read and write here, so nothing in it is trusted.
-SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
-REDEEM_FILE_PATH = SHARED_DIR / "extra_time.txt"  # the child pastes redeem codes in
-REMAINING_TIME_FILE_PATH = SHARED_DIR / "remaining_time.txt"  # read by the widget
-
-# Not visible from the child's account.
+# A child is a windows account, and everything kept for them sits in a directory
+# of that name: `DATA_DIR/<child>/`, hidden from them, and `SHARED_DIR/<child>/`,
+# which every local account may read and write, so nothing in it is trusted.
+# The files inside are named where the monitor uses them; the installer creates
+# the directories, and every directory in DATA_DIR is a child to the monitor.
 DATA_DIR = Path(__file__).parent / "data"
-USED_CODES_FILE = DATA_DIR / "used_redeem_codes.txt"  # one code per line, appended
-TARGET_USER_FILE = DATA_DIR / "target_user.txt"  # the child's account, written by install.ps1
-CRASH_LOG_FILE = DATA_DIR / "crash.log"
+SHARED_DIR = Path(r"C:\ProgramData\ScreenTimeShared")
+CRASH_LOG_FILE = DATA_DIR / "crash.log"  # the monitor's own, so not under any child
 
-# Hex, 8 bytes or more, written by the installer; the parent's machine needs the same one.
-SECRET_FILE = DATA_DIR / "secret.txt"
-
-# The parent's server, e.g. "https://screentime.example.com", written by install.ps1;
-# missing or empty disables all syncing.
-SERVER_URL_FILE = DATA_DIR / "server_url.txt"
-CHILD_TOKEN_FILE = DATA_DIR / "child_token.txt"  # from add_child.py on the server
-APPLIED_GRANTS_FILE = DATA_DIR / "applied_grants.json"
-SETTINGS_CHANGE_OUTCOME_FILE = DATA_DIR / "settings_change_outcome.json"  # of the last change delivered
 SYNC_TIMEOUT_SECONDS = 5  # a slow server must not stall the check loop
 
 CHECK_INTERVAL_SECONDS = 60
@@ -39,8 +28,8 @@ NETWORK_WARMUP_SECONDS = 20
 WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # in date.weekday() order
 DAILY_LIMIT_RANGE = range(24 * 60 * 60 + 1)
 
-# Read these through get_config(), never directly: SETTINGS_FILE holds what is in force,
-# and these are only what a machine starts with and falls back to.
+# Read these through get_config(), never directly: the child's settings file holds
+# what is in force, and these are only what a child starts with and falls back to.
 SETTINGS = {
     "DAILY_LIMIT_SECONDS": {
         "default": 1 * 60 * 60,
@@ -69,7 +58,6 @@ SETTINGS = {
         "allowed": {"keys": WEEKDAY_NAMES, "values": DAILY_LIMIT_RANGE},
     },
 }
-SETTINGS_FILE = DATA_DIR / "settings.json"  # every setting in force, written by the monitor
 
 SIGNATURE_CHARS = 4  # changing it invalidates codes already handed out
 MAX_REDEEM_FILE_BYTES = 128
@@ -124,33 +112,33 @@ def validated_settings(stored: dict, fallback=None) -> dict:
     return settings
 
 
-def stored_settings() -> dict:
+def stored_settings(settings_file: Path) -> dict:
     try:
-        stored = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        stored = json.loads(settings_file.read_text(encoding="utf-8"))
     except Exception:  # whatever the file holds, the monitor's tick must go on
         return {}
     return stored if isinstance(stored, dict) else {}
 
 
-def get_config() -> dict:
+def get_config(settings_file: Path) -> dict:
     """The settings in force: the file, with the default for anything it lacks."""
-    return validated_settings(stored_settings())
+    return validated_settings(stored_settings(settings_file))
 
 
-def write_settings_file(settings: dict) -> None:
-    tmp_file = SETTINGS_FILE.with_suffix(".tmp")
+def write_settings_file(settings: dict, settings_file: Path) -> None:
+    tmp_file = settings_file.with_suffix(".tmp")
     tmp_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    os.replace(tmp_file, SETTINGS_FILE)  # atomic
+    os.replace(tmp_file, settings_file)  # atomic
 
 
-def save_settings(sent: dict) -> dict:
+def save_settings(sent: dict, settings_file: Path) -> dict:
     """Store what the server sent, keeping what is in force wherever it may not."""
-    settings = validated_settings(sent, get_config())
-    write_settings_file(settings)
+    settings = validated_settings(sent, get_config(settings_file))
+    write_settings_file(settings, settings_file)
     return settings
 
 
-def ensure_settings_file() -> None:
-    """A machine that has never had one starts from the defaults above."""
-    if not SETTINGS_FILE.is_file():
-        write_settings_file(default_settings())
+def ensure_settings_file(settings_file: Path) -> None:
+    """A child that has never had one starts from the defaults above."""
+    if not settings_file.is_file():
+        write_settings_file(default_settings(), settings_file)

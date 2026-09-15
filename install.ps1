@@ -42,16 +42,44 @@ if ($enabledUsers -notcontains $childUser) {
 # The folder the child may write in -- config.py is the single source for it.
 $SharedDir = [regex]::Match($configText, 'SHARED_DIR\s*=\s*Path\(r?["'']([^"'']+)').Groups[1].Value
 if (-not $SharedDir) { throw "Could not read SHARED_DIR from config.py." }
-$redeemFile = Join-Path $SharedDir "extra_time.txt"   # must match REDEEM_FILE_PATH in config.py
+
+# Everything kept for a child sits in a folder named after the account: one under
+# data\ (locked; every folder there is a child to the monitor) and one in the
+# shared folder. The file names must match what monitor.py uses.
+$DataDir        = "$MonitorDir\data"
+$childDataDir   = "$DataDir\$childUser"
+$childSharedDir = "$SharedDir\$childUser"
+$redeemFile     = "$childSharedDir\extra_time.txt"
+$remainingFile  = "$childSharedDir\remaining_time.txt"
+
+# Before 0.5 the child's files sat in data\ itself, with the account in
+# target_user.txt. Move them under the account, target_user.txt last: while it
+# exists the move is not done and the next run redoes it. The earlier child
+# keeps their files even when a different account is picked now; the monitor
+# then watches both. (Temporary: gone once no machine before 0.5 remains.)
+$oldUserFile = "$DataDir\target_user.txt"
+if (Test-Path $oldUserFile) {
+    $oldChild = [IO.File]::ReadAllText($oldUserFile).Trim()
+    New-Item -ItemType Directory -Force "$DataDir\$oldChild", "$SharedDir\$oldChild" | Out-Null
+    Get-ChildItem -LiteralPath $DataDir -File |
+        Where-Object { $_.Name -notin @("target_user.txt", "crash.log") } |
+        Move-Item -Destination "$DataDir\$oldChild" -Force
+    if (Test-Path "$SharedDir\extra_time.txt") { Move-Item "$SharedDir\extra_time.txt" "$SharedDir\$oldChild" -Force }   # may hold a code not yet redeemed
+    Remove-Item "$SharedDir\remaining_time.txt" -ErrorAction SilentlyContinue   # the monitor writes a new one
+    Remove-Item -LiteralPath $oldUserFile
+    Write-Host "Moved the files of the earlier install under data\$oldChild"
+    if ($oldChild -ne $childUser) { Write-Host "  $oldChild stays a child of this machine; delete that folder to stop watching the account." -ForegroundColor Yellow }
+}
 
 # Both credentials go to files in the locked data folder, never into config.py,
 # which git tracks. Asked for now, written only once the folder ACL is in place.
-$secretFile = "$MonitorDir\data\secret.txt"
-$tokenFile  = "$MonitorDir\data\child_token.txt"
-$userFile   = "$MonitorDir\data\target_user.txt"
+$secretFile    = "$childDataDir\secret.txt"
+$tokenFile     = "$childDataDir\child_token.txt"
+$serverUrlFile = "$childDataDir\server_url.txt"
+$linkFile      = "$childDataDir\link_path.txt"   # so uninstall.ps1 finds a non-default choice
 
 # A fresh install gets a random secret for signing extra-time codes; a reinstall
-# keeps the one it has. To change it later, edit data\secret.txt and reboot.
+# keeps the one it has. To change it later, edit data\<child>\secret.txt and reboot.
 $secretHex = ""
 if (-not (Test-Path $secretFile)) {
     $bytes = New-Object byte[] 16
@@ -69,7 +97,6 @@ $childToken = (Read-Host $tokenPrompt).Trim()
 
 # Enter keeps the URL of an earlier install, or takes the default on a fresh one. Without
 # a token the monitor never contacts the server, so the default is harmless offline.
-$serverUrlFile = "$MonitorDir\data\server_url.txt"
 $serverUrlDefault = $DefaultServerUrl
 if (Test-Path $serverUrlFile) { $serverUrlDefault = [IO.File]::ReadAllText($serverUrlFile).Trim() }
 $serverUrl = (Read-Host "Parent's server URL (Enter for $serverUrlDefault)").Trim()
@@ -77,7 +104,6 @@ if (-not $serverUrl) { $serverUrl = $serverUrlDefault }
 
 # Where the "Extra time" shortcut goes. The shared desktop is one file every
 # account sees, the parent's included; the child's own Desktop keeps it off yours.
-$linkFile = "$MonitorDir\data\link_path.txt"   # so uninstall.ps1 finds a non-default choice
 $defaultLinkDir = "$env:PUBLIC\Desktop"
 $previousLinkPath = ""
 if (Test-Path $linkFile) {
@@ -145,25 +171,23 @@ if ($LASTEXITCODE -ne 0) { throw "Could not lock $PythonDir; the child could pla
 $pythonw = Join-Path $PythonDir pythonw.exe   # windowless twin, for the widget
 
 # Monitor folder: copy the files, then lock it to SYSTEM + Administrators only.
-# That lock is what stops the child reading data\secret.txt and forging codes.
-New-Item -ItemType Directory -Force "$MonitorDir\data" | Out-Null
+# That lock is what stops the child reading data\<child>\secret.txt and forging codes.
+New-Item -ItemType Directory -Force $childDataDir | Out-Null
 Copy-Item "$src\monitor.py", "$src\os_tooling.py", "$src\remote_sync.py", "$src\config.py" $MonitorDir -Force
 icacls $MonitorDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null   # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators
 # icacls signals failure only through its exit code, which $ErrorActionPreference
 # does not catch -- unchecked, the secret below lands in a folder the child can read.
-if ($LASTEXITCODE -ne 0) { throw "Could not lock $MonitorDir; data\secret.txt would be readable by the child." }
+if ($LASTEXITCODE -ne 0) { throw "Could not lock $MonitorDir; data\$childUser\secret.txt would be readable by the child." }
 
 # Written only now, so neither credential ever sits in a folder the child can read.
 if ($secretHex)   { Set-Content -Path $secretFile -Value $secretHex   -Encoding ascii -NoNewline }
 if ($childToken) { Set-Content -Path $tokenFile  -Value $childToken -Encoding ascii -NoNewline }
-# UTF-8 without a BOM, unlike the two above: an account name is not always ascii.
-[IO.File]::WriteAllText($userFile, $childUser)
 [IO.File]::WriteAllText($serverUrlFile, $serverUrl)
 
 # Shared folder: every local account may write here. It holds only the overlay
-# script, the number it shows and the redeem file -- nothing that has to be
-# trusted, since the codes inside are signed and checked by monitor.py.
-New-Item -ItemType Directory -Force $SharedDir | Out-Null
+# script and, per child, the number it shows and the redeem file -- nothing that
+# has to be trusted, since the codes inside are signed and checked by monitor.py.
+New-Item -ItemType Directory -Force $childSharedDir | Out-Null
 icacls $SharedDir /grant "*S-1-5-32-545:(OI)(CI)M" | Out-Null   # *S-1-5-32-545 = BUILTIN\Users
 Copy-Item "$src\remaining_time_widget.py" $SharedDir -Force
 if (-not (Test-Path $redeemFile)) { New-Item -ItemType File $redeemFile | Out-Null }
@@ -184,7 +208,7 @@ $opts = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOn
 Register-ScheduledTask "ScreenTimeMonitor" -Action $run -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $who -Settings $opts -Force | Out-Null
 
 # Task 2 -- show the overlay in the child's session when they log in.
-$run = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$SharedDir\remaining_time_widget.py`"" -WorkingDirectory $SharedDir
+$run = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$SharedDir\remaining_time_widget.py`" `"$remainingFile`"" -WorkingDirectory $SharedDir
 $who = New-ScheduledTaskPrincipal -UserId $childUser -LogonType Interactive
 # default task settings would skip the start on battery power
 Register-ScheduledTask "ScreenTimeWidget" -Action $run -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $childUser) -Principal $who -Settings $opts -Force | Out-Null

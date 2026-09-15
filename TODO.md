@@ -4,14 +4,6 @@ Ordered by importance within each section.
 
 ## Client / monitor
 
-* Enablers for several children on one machine, the full thing later: paths,
-  secret and token derived from the child name through one function, files
-  under `data/<child>/` (every directory there is a child; server URL and
-  used-codes ledger included, nothing machine-wide), per-child files in the
-  shared dir, the redeem code as `<child>:<date>:<seconds>:<sign>` with the
-  child signed too, the loop written as "for each child" while there is one.
-  The installer moves the old files under the child, `target_user.txt` last.
-  Ships before auto-update.
 * Auto-update. The task runs a launcher: check for updates, then start the
   monitor. It fetches the manifest from `releases/latest/download/` on GitHub;
   if newer than the installed version, it verifies the Ed25519 signature
@@ -38,7 +30,14 @@ Ordered by importance within each section.
   changes from the server: schema, validation, the file, `get_config` renamed to
   say what it returns. The installer's file list in `install.ps1` must name the
   new module.
-* Several children on one machine, on the enablers above.
+* Several children on one machine. The layout is ready since 0.5: a child is a
+  directory under `data/` and under the shared dir, and the monitor loops over
+  them. Left: the redeem code as `<child>:<date>:<seconds>:<sign>` with the
+  child signed too, so a code redeems for one child only; the installer adding
+  a child without disturbing the ones there (one widget task per child, the
+  monitor task kept); one more `icacls` locking each child's shared folder to
+  that account, so siblings cannot see or edit each other's files. The
+  installer's move of a pre-0.5 layout goes once no such machine remains.
 
 ## Server-side
 

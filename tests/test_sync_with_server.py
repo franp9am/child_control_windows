@@ -22,19 +22,17 @@ KID = "kid"
 def files(tmp_path, monkeypatch):
     """Every file a sync reads or writes, redirected into tmp_path. The server
     url and token are present, so a sync goes ahead unless a test removes them."""
+    monkeypatch.setattr(monitor, "DATA_DIR", tmp_path)
+    data_dir = tmp_path / KID
+    data_dir.mkdir()
     paths = {
-        "server_url": tmp_path / "server_url.txt",
-        "token": tmp_path / "child_token.txt",
-        "applied_grants": tmp_path / "applied_grants.json",
-        "outcome": tmp_path / "settings_change_outcome.json",
-        "settings": tmp_path / "settings.json",
-        "datafile": tmp_path / "2026-09-14.json",
+        "server_url": data_dir / "server_url.txt",
+        "token": data_dir / "child_token.txt",
+        "applied_grants": data_dir / "applied_grants.json",
+        "outcome": data_dir / "settings_change_outcome.json",
+        "settings": data_dir / "settings.json",
+        "datafile": data_dir / "2026-09-14.json",
     }
-    monkeypatch.setattr(monitor, "SERVER_URL_FILE", paths["server_url"])
-    monkeypatch.setattr(monitor, "CHILD_TOKEN_FILE", paths["token"])
-    monkeypatch.setattr(monitor, "APPLIED_GRANTS_FILE", paths["applied_grants"])
-    monkeypatch.setattr(monitor, "SETTINGS_CHANGE_OUTCOME_FILE", paths["outcome"])
-    monkeypatch.setattr(config, "SETTINGS_FILE", paths["settings"])
     paths["server_url"].write_text("https://screentime.example.com\n", encoding="utf-8")
     paths["token"].write_text("child-token-123\n", encoding="utf-8")
     return paths
@@ -204,7 +202,7 @@ def test_an_acceptable_settings_change_is_taken_and_written(files, sync):
 
 def test_an_unacceptable_settings_change_is_refused_and_reported(files, sync):
     in_force = settings(DAILY_LIMIT_SECONDS=2 * HOUR)
-    config.write_settings_file(in_force)
+    config.write_settings_file(in_force, files["settings"])
     wanted = settings(EARLIEST_HOUR_INCLUDED=24)  # no such hour
     sync.answer = SyncAnswer(pending_grants=[], settings_change=SettingsChange(id=13, settings=wanted))
 
@@ -220,7 +218,7 @@ def test_a_partial_change_is_filled_from_the_file_and_counts_as_taken(files, syn
     # only when the monitor gained a setting while the change was in flight;
     # "taken" is judged on the settings the change does name
     in_force = settings(DAILY_LIMIT_SECONDS=2 * HOUR)
-    config.write_settings_file(in_force)
+    config.write_settings_file(in_force, files["settings"])
     sync.answer = SyncAnswer(
         pending_grants=[], settings_change=SettingsChange(id=14, settings={"CARRYOVER": False})
     )

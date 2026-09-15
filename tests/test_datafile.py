@@ -25,8 +25,7 @@ def write_past_day(tmp_path, spent, granted=0, days_ago=1):
 
 def test_an_existing_file_is_loaded_and_left_alone(tmp_path):
     write_past_day(tmp_path, spent=0)  # would carry a full hour, if it were applied
-    today = monitor.get_datafile(NOW).name
-    f = tmp_path / today
+    f = monitor.get_datafile(NOW, tmp_path)
     # today's file written by hand, as an earlier tick would have left it
     f.write_text(json.dumps({"time_spent_sec": 500, "carryover_sec": 0}), encoding="utf-8")
     before = f.read_text(encoding="utf-8")
@@ -40,7 +39,7 @@ def test_an_existing_file_is_loaded_and_left_alone(tmp_path):
 
 def test_a_new_day_gets_the_carryover_and_a_log_line(tmp_path):
     write_past_day(tmp_path, spent=HOUR - 900)
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 
@@ -51,7 +50,7 @@ def test_a_new_day_gets_the_carryover_and_a_log_line(tmp_path):
 
 def test_carryover_switched_off_starts_the_day_from_zero(tmp_path):
     write_past_day(tmp_path, spent=0)
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings(CARRYOVER=False))
 
@@ -62,7 +61,7 @@ def test_carryover_switched_off_starts_the_day_from_zero(tmp_path):
 
 def test_nothing_to_carry_writes_no_log_line(tmp_path):
     write_past_day(tmp_path, spent=HOUR)
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 
@@ -73,7 +72,7 @@ def test_nothing_to_carry_writes_no_log_line(tmp_path):
 
 def test_overspending_the_limit_carries_nothing_and_no_debt(tmp_path):
     write_past_day(tmp_path, spent=HOUR + 2000)  # the shutdown grace period ran over
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 
@@ -83,7 +82,7 @@ def test_overspending_the_limit_carries_nothing_and_no_debt(tmp_path):
 
 def test_a_grant_fully_used_up_carries_nothing(tmp_path):
     write_past_day(tmp_path, spent=HOUR + 1800, granted=1800)
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 
@@ -93,7 +92,7 @@ def test_a_grant_fully_used_up_carries_nothing(tmp_path):
 
 def test_the_unused_part_of_a_grant_carries_over(tmp_path):
     write_past_day(tmp_path, spent=HOUR + 600, granted=1800)
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 
@@ -103,7 +102,7 @@ def test_the_unused_part_of_a_grant_carries_over(tmp_path):
 
 def test_a_missing_day_after_an_overspent_one_carries_exactly_the_missing_days_limit(tmp_path):
     write_past_day(tmp_path, spent=HOUR + 2000, days_ago=2)  # then yesterday the machine was off
-    f = tmp_path / monitor.get_datafile(NOW).name
+    f = monitor.get_datafile(NOW, tmp_path)
 
     data = monitor.ensure_datafile(f, NOW, settings())
 

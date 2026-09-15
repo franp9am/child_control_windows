@@ -12,25 +12,17 @@ import config
 import os_tooling
 import remote_sync
 from config import (
-    APPLIED_GRANTS_FILE,
     CHECK_INTERVAL_SECONDS,
-    CHILD_TOKEN_FILE,
     CRASH_LOG_FILE,
     DATA_DIR,
     MAX_REDEEM_FILE_BYTES,
     NETWORK_WARMUP_SECONDS,
     NIGHT_SHUTDOWN_DELAY_SECONDS,
     NIGHT_WARNING_SECONDS,
-    REDEEM_FILE_PATH,
-    REMAINING_TIME_FILE_PATH,
-    SECRET_FILE,
-    SERVER_URL_FILE,
-    SETTINGS_CHANGE_OUTCOME_FILE,
+    SHARED_DIR,
     SHUTDOWN_DELAY_SECONDS,
     SIGNATURE_CHARS,
     STARTUP_DELAY_SECONDS,
-    TARGET_USER_FILE,
-    USED_CODES_FILE,
 )
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -49,8 +41,8 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"  # shared by every stamp written and read
 TICK_TIME_FORMAT = "%H:%M:%S"  # ticks live in a per-date file, so no date needed
 
 
-def get_datafile(now):
-    return DATA_DIR / (now.date().isoformat() + ".json")
+def get_datafile(now, data_dir: Path) -> Path:
+    return data_dir / (now.date().isoformat() + ".json")
 
 
 def find_previous_datafile(today: datetime.date, data_dir: Path) -> Optional[Path]:
@@ -164,11 +156,11 @@ def remaining_seconds(data, settings, date: datetime.date):
     )
 
 
-def write_remaining_time_file(remaining_sec):
+def write_remaining_time_file(remaining_sec, target: Path):
     """Publish remaining seconds to a child-readable file for a UI to display."""
-    target = REMAINING_TIME_FILE_PATH
     tmp_file = target.with_suffix(".tmp")
     try:
+        target.parent.mkdir(parents=True, exist_ok=True)
         with open(tmp_file, "w", encoding="utf-8") as f:
             f.write(str(max(0, remaining_sec)))
         os.replace(tmp_file, target)
@@ -186,15 +178,13 @@ def log_unexpected_error():
         pass
 
 
-def load_target_user(target_user_file: Path) -> str:
-    """The child's account, as install.ps1 wrote it; there is no default."""
-    try:
-        name = target_user_file.read_text(encoding="utf-8-sig").strip()
-    except OSError:
-        name = ""
-    if not name:
-        raise ValueError(f"No child account in {target_user_file}; run install.ps1 to set it")
-    return name
+def load_children(data_dir: Path) -> list:
+    """The children's accounts: every directory install.ps1 made under data;
+    there is no default."""
+    children = sorted(p.name for p in data_dir.iterdir() if p.is_dir()) if data_dir.is_dir() else []
+    if not children:
+        raise ValueError(f"No child directory in {data_dir}; run install.ps1 to set one up")
+    return children
 
 
 def verify(msg: bytes, sig_hex: str, secret: bytes) -> bool:
@@ -295,17 +285,20 @@ def handle_redeem_file(redeem_file: Path, secret: bytes):
     }
 
 
-def sync_with_server(data, datafile, now, settings, target_user) -> dict:
+def sync_with_server(data, datafile, now, settings, child: str) -> dict:
     """Report today's totals to the parent's server, apply the grants it sends
     back and adopt any settings it sends with them. A server that is down, slow
     or unreachable simply leaves the local numbers and settings untouched.
 
     Returns the settings to carry on with, which are the ones passed in unless
     the server changed them."""
-    server_url = remote_sync.load_server_url(SERVER_URL_FILE)
-    token = remote_sync.load_child_token(CHILD_TOKEN_FILE)
+    data_dir = DATA_DIR / child
+    server_url = remote_sync.load_server_url(data_dir / "server_url.txt")
+    token = remote_sync.load_child_token(data_dir / "child_token.txt")
     if not server_url or not token:
         return settings
+    applied_grants_file = data_dir / "applied_grants.json"
+    outcome_file = data_dir / "settings_change_outcome.json"  # of the last change delivered
 
     now_str = now.strftime(TIMESTAMP_FORMAT)
     status = remote_sync.DailyStatus(
@@ -316,11 +309,9 @@ def sync_with_server(data, datafile, now, settings, target_user) -> dict:
         remaining_sec=remaining_seconds(data, settings, now.date()),
         last_tick=data["last_tick"],
         settings=settings,
-        settings_change_outcome=remote_sync.load_settings_change_outcome(
-            SETTINGS_CHANGE_OUTCOME_FILE
-        ),
+        settings_change_outcome=remote_sync.load_settings_change_outcome(outcome_file),
     )
-    applied_grant_ids = remote_sync.load_applied_grant_ids(APPLIED_GRANTS_FILE)
+    applied_grant_ids = remote_sync.load_applied_grant_ids(applied_grants_file)
     try:
         answer = remote_sync.send_status(status, applied_grant_ids, server_url, token)
     except Exception:
@@ -331,20 +322,20 @@ def sync_with_server(data, datafile, now, settings, target_user) -> dict:
     for grant in answer.pending_grants:
         data["granted_sec"] += grant.seconds
         data["event_log"].append(f"server grant {grant.seconds} sec id {grant.id} {now_str}")
-        os_tooling.notify(f"extra time {grant.seconds}", target_user)
+        os_tooling.notify(f"extra time {grant.seconds}", child)
     change = answer.settings_change
     if change is not None:
-        in_force = config.save_settings(change.settings)
+        in_force = config.save_settings(change.settings, data_dir / "settings.json")
         taken = all(in_force.get(name) == value for name, value in change.settings.items())
         verdict = "taken" if taken else "refused"
         data["event_log"].append(f"server settings {verdict} {change.settings} {now_str}")
-        remote_sync.save_settings_change_outcome(change.id, taken, SETTINGS_CHANGE_OUTCOME_FILE)
+        remote_sync.save_settings_change_outcome(change.id, taken, outcome_file)
         settings = in_force
     if answer.pending_grants or change is not None:
         save_data(data, datafile)
     if answer.pending_grants or applied_grant_ids:
         remote_sync.save_applied_grant_ids(
-            [grant.id for grant in answer.pending_grants], APPLIED_GRANTS_FILE
+            [grant.id for grant in answer.pending_grants], applied_grants_file
         )
     return settings
 
@@ -381,47 +372,52 @@ def seconds_to_charge(data, now):
     return CHECK_INTERVAL_SECONDS
 
 
-def startup(now, target_user):
-    """Before the first tick: the settings file if the machine never had one,
+def startup(now, child: str):
+    """Before the first tick: the settings file if the child never had one,
     today's data with any carryover, a first sync so that a grant made while
     the machine was off counts from the first tick, and a first number for
     the widget."""
-    config.ensure_settings_file()
-    datafile = get_datafile(now)
-    settings = config.get_config()
+    settings_file = DATA_DIR / child / "settings.json"
+    config.ensure_settings_file(settings_file)
+    datafile = get_datafile(now, DATA_DIR / child)
+    settings = config.get_config(settings_file)
     data = ensure_datafile(datafile, now, settings)
-    if os_tooling.user_logged_in(target_user):
-        settings = sync_with_server(data, datafile, now, settings, target_user)
-    write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+    if os_tooling.user_logged_in(child):
+        settings = sync_with_server(data, datafile, now, settings, child)
+    write_remaining_time_file(
+        remaining_seconds(data, settings, now.date()), SHARED_DIR / child / "remaining_time.txt"
+    )
 
 
-def shut_down(reason, delay_seconds, data, datafile, now, settings, target_user):
+def shut_down(reason, delay_seconds, data, datafile, now, settings, child: str):
     """Tell the child, record why, get the last word to the server, and only
     then order the shutdown."""
-    write_remaining_time_file(0)
-    os_tooling.notify(reason, target_user)
+    write_remaining_time_file(0, SHARED_DIR / child / "remaining_time.txt")
+    os_tooling.notify(reason, child)
     data["event_log"].append(f"{reason} {now.strftime(TIMESTAMP_FORMAT)}")
     save_data(data, datafile)
     # without this the page keeps stale numbers, and a grant that caused this
     # shutdown stays pending until the next boot
-    sync_with_server(data, datafile, now, settings, target_user)
+    sync_with_server(data, datafile, now, settings, child)
     # last, because it blocks until the machine goes down; a failure above
     # only costs this tick, the next one retries
     os_tooling.shutdown(delay_seconds)
 
 
-def tick(now, target_user, secret):
-    """One check: charge the time since the last one, or shut the machine
-    down when the time is up or the allowed hours are over."""
+def tick(now, child: str, secret: bytes):
+    """One check of one child: charge the time since the last one, or shut the
+    machine down when the time is up or the allowed hours are over."""
     now_str = now.strftime(TIMESTAMP_FORMAT)
-    datafile = get_datafile(now)
-    settings = config.get_config()
+    data_dir, shared_dir = DATA_DIR / child, SHARED_DIR / child
+    remaining_time_file = shared_dir / "remaining_time.txt"  # read by the widget
+    datafile = get_datafile(now, data_dir)
+    settings = config.get_config(data_dir / "settings.json")
     data = ensure_datafile(datafile, now, settings)
 
-    if not os_tooling.user_logged_in(target_user):
+    if not os_tooling.user_logged_in(child):
         # Nothing is being spent, but keep publishing: the widget treats a
         # file that stops being refreshed as "the monitor is gone".
-        write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+        write_remaining_time_file(remaining_seconds(data, settings, now.date()), remaining_time_file)
         return
 
     if is_night_time(now, settings):
@@ -432,18 +428,20 @@ def tick(now, target_user, secret):
             datafile=datafile,
             now=now,
             settings=settings,
-            target_user=target_user,
+            child=child,
         )
         return
 
-    extra_time = redeem_unused_code(REDEEM_FILE_PATH, secret, USED_CODES_FILE)
+    extra_time = redeem_unused_code(
+        shared_dir / "extra_time.txt", secret, data_dir / "used_redeem_codes.txt"
+    )
     if extra_time:
         data["event_log"].append(f"redeem code {extra_time} {now_str}")
         data["granted_sec"] += extra_time
-        os_tooling.notify(f"extra time {extra_time}", target_user)
+        os_tooling.notify(f"extra time {extra_time}", child)
         save_data(data, datafile)
 
-    settings = sync_with_server(data, datafile, now, settings, target_user)
+    settings = sync_with_server(data, datafile, now, settings, child)
 
     if remaining_seconds(data, settings, now.date()) <= 0:
         shut_down(
@@ -453,36 +451,39 @@ def tick(now, target_user, secret):
             datafile=datafile,
             now=now,
             settings=settings,
-            target_user=target_user,
+            child=child,
         )
         return
 
     soon = now + datetime.timedelta(seconds=NIGHT_WARNING_SECONDS)
     warning = f"{NIGHT_WARNING_SECONDS // 60} minutes to night"
     if is_night_time(soon, settings) and not any(e.startswith(warning) for e in data["event_log"]):
-        os_tooling.notify(warning, target_user)
+        os_tooling.notify(warning, child)
         data["event_log"].append(f"{warning} {now_str}")  # once a day: the log remembers
 
     data["time_spent_sec"] += seconds_to_charge(data, now)
     data["ticks"].append(now.strftime(TICK_TIME_FORMAT))
     data["last_tick"] = now_str
     save_data(data, datafile)
-    write_remaining_time_file(remaining_seconds(data, settings, now.date()))
+    write_remaining_time_file(remaining_seconds(data, settings, now.date()), remaining_time_file)
 
 
 def main():
+    """One loop for the machine, each child in turn. The installer sets up one
+    child today, but nothing here assumes there is only one."""
     try:
-        target_user = load_target_user(TARGET_USER_FILE)
+        children = load_children(DATA_DIR)
     except Exception:
         log_unexpected_error()  # a failure this early leaves no other trace
         raise
-    secret = load_secret(SECRET_FILE)
+    secrets = {child: load_secret(DATA_DIR / child / "secret.txt") for child in children}
 
     time.sleep(NETWORK_WARMUP_SECONDS)  # let the network come up before syncing
-    try:
-        startup(datetime.datetime.now(), target_user)
-    except Exception:
-        log_unexpected_error()
+    for child in children:
+        try:
+            startup(datetime.datetime.now(), child)
+        except Exception:
+            log_unexpected_error()
     # the rest of the delay, waiting for the redeem file to be created
     time.sleep(max(0, STARTUP_DELAY_SECONDS - NETWORK_WARMUP_SECONDS))
 
@@ -490,10 +491,11 @@ def main():
         # A transient failure (locked file, redeem file vanishing mid-check,
         # odd data on disk) must not kill the monitor: log it, skip this tick
         # and try again, instead of leaving the machine unrestricted.
-        try:
-            tick(datetime.datetime.now(), target_user, secret)
-        except Exception:
-            log_unexpected_error()
+        for child in children:
+            try:
+                tick(datetime.datetime.now(), child, secrets[child])
+            except Exception:
+                log_unexpected_error()
         time.sleep(CHECK_INTERVAL_SECONDS)
 
 

@@ -64,11 +64,17 @@ if (Test-Path $PythonDir) {
     Write-Host "Deleted $PythonDir" -ForegroundColor Green
 }
 
-# install.ps1 records where it put the shortcut; older installs always used the
-# shared desktop, so try both.
+# install.ps1 records where it put the shortcut, in data\<child>\link_path.txt
+# per child, or in data\ itself before 0.5; the oldest installs always used the
+# shared desktop, so try all of them.
 $links = @("$env:PUBLIC\Desktop\Extra time.lnk")
-$linkFile = "$MonitorDir\data\link_path.txt"
-if (Test-Path $linkFile) { $links += [IO.File]::ReadAllText($linkFile).Trim() }
+$linkFiles = @("$MonitorDir\data\link_path.txt")
+if (Test-Path "$MonitorDir\data") {
+    $linkFiles += Get-ChildItem -LiteralPath "$MonitorDir\data" -Directory | ForEach-Object { "$($_.FullName)\link_path.txt" }
+}
+foreach ($linkFile in $linkFiles) {
+    if (Test-Path $linkFile) { $links += [IO.File]::ReadAllText($linkFile).Trim() }
+}
 foreach ($link in ($links | Where-Object { $_ } | Select-Object -Unique)) {
     if (Test-Path $link) {
         Remove-Item -LiteralPath $link -Force
